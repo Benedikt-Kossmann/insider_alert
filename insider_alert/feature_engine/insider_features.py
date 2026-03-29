@@ -6,9 +6,16 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 _ROLE_WEIGHTS = {
+    # Abbreviations (e.g., "CEO") and key substrings of full titles
+    # (e.g., "Chief Executive Officer") are both matched via substring search.
     "CEO": 2.0,
+    "CHIEF EXECUTIVE": 2.0,
     "CFO": 2.0,
+    "CHIEF FINANCIAL": 2.0,
     "COO": 2.0,
+    "CHIEF OPERATING": 2.0,
+    "CTO": 2.0,
+    "CHIEF TECHNOLOGY": 2.0,
     "PRESIDENT": 2.0,
     "DIRECTOR": 1.5,
 }

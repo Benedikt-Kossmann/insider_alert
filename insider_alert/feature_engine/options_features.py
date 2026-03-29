@@ -13,8 +13,23 @@ BLOCK_TRADE_VOLUME_THRESHOLD = 1000
 SHORT_DATED_WINDOW_DAYS = 14
 
 
-def compute_options_features(options_df: pd.DataFrame, current_price: float) -> dict:
-    """Compute options-based features."""
+def compute_options_features(
+    options_df: pd.DataFrame,
+    current_price: float,
+    iv_baseline: float = 0.0,
+) -> dict:
+    """Compute options-based features.
+
+    Parameters
+    ----------
+    options_df:
+        Combined calls+puts options chain as returned by ``fetch_options_chain``.
+    current_price:
+        Current underlying price used for OTM classification.
+    iv_baseline:
+        Historical volatility baseline (e.g. 30-day HV) used to compute
+        ``iv_change_1d``.  Pass 0.0 to skip IV-change computation.
+    """
     defaults = {
         "call_volume_zscore": 0.0,
         "put_volume_zscore": 0.0,
@@ -72,6 +87,12 @@ def compute_options_features(options_df: pd.DataFrame, current_price: float) -> 
     put_call_ratio_change = current_pcr - 0.7
 
     iv_change_1d = 0.0
+    if not df.empty and "impliedvolatility" in df.columns:
+        avg_iv = float(
+            df["impliedvolatility"].replace(0.0, float("nan")).dropna().mean() or 0.0
+        )
+        if iv_baseline > 0.0 and avg_iv > 0.0:
+            iv_change_1d = (avg_iv - iv_baseline) / (iv_baseline + 1e-9)
 
     short_dated_otm_call_score = 0.0
     if not calls.empty and total_call_vol > 0:

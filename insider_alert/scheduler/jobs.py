@@ -11,9 +11,9 @@ logger = logging.getLogger(__name__)
 def run_analysis_for_ticker(ticker: str, config) -> None:
     """Run full analysis pipeline for one ticker."""
     from insider_alert.data_ingestion.market_data import fetch_ohlcv_daily
-    from insider_alert.data_ingestion.options_data import fetch_options_chain
+    from insider_alert.data_ingestion.options_data import fetch_options_chain, fetch_historical_iv
     from insider_alert.data_ingestion.insider_data import fetch_insider_transactions
-    from insider_alert.data_ingestion.event_data import days_to_next_earnings
+    from insider_alert.data_ingestion.event_data import days_to_next_earnings, fetch_recent_corporate_events
     from insider_alert.data_ingestion.news_data import fetch_news
     from insider_alert.feature_engine.price_features import compute_price_features
     from insider_alert.feature_engine.volume_features import compute_volume_features
@@ -40,17 +40,37 @@ def run_analysis_for_ticker(ticker: str, config) -> None:
     try:
         ohlcv = fetch_ohlcv_daily(ticker)
         options = fetch_options_chain(ticker)
+        iv_baseline = fetch_historical_iv(ticker)
         insider_txns = fetch_insider_transactions(ticker)
         dte = days_to_next_earnings(ticker)
+        corporate_events = fetch_recent_corporate_events(ticker)
         news = fetch_news(ticker)
 
         current_price = float(ohlcv["close"].iloc[-1]) if not ohlcv.empty and "close" in ohlcv.columns else 100.0
         price_f = compute_price_features(ohlcv)
         volume_f = compute_volume_features(ohlcv)
         orderflow_f = compute_orderflow_features(ohlcv)
-        options_f = compute_options_features(options, current_price)
+        options_f = compute_options_features(options, current_price, iv_baseline=iv_baseline)
         insider_f = compute_insider_features(insider_txns)
-        event_f = compute_event_features(dte, price_f, volume_f, options_f)
+
+        # Derive days-to-next-corporate-event from recent 8-K filings.
+        # A recent 8-K with a known future date would be surfaced here;
+        # if none found, pass None so event_features falls back to earnings only.
+        days_to_corp_event: int | None = None
+        if not corporate_events.empty and "date" in corporate_events.columns:
+            import datetime as _dt
+            today = _dt.date.today()
+            for ev_date in corporate_events["date"]:
+                try:
+                    d = ev_date if isinstance(ev_date, _dt.date) else _dt.date.fromisoformat(str(ev_date))
+                    delta = (d - today).days
+                    if 0 <= delta <= 30:
+                        if days_to_corp_event is None or delta < days_to_corp_event:
+                            days_to_corp_event = delta
+                except Exception:
+                    continue
+
+        event_f = compute_event_features(dte, price_f, volume_f, options_f, days_to_corp_event)
         news_f = compute_news_features(news, price_f.get("return_1d", 0.0))
         accumulation_f = compute_accumulation_features(ohlcv)
 
