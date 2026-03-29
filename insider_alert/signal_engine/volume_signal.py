@@ -1,0 +1,35 @@
+"""Volume anomaly signal computation."""
+import logging
+
+import numpy as np
+
+logger = logging.getLogger(__name__)
+
+
+def compute_volume_anomaly_signal(features: dict) -> dict:
+    """Compute volume anomaly signal from volume features."""
+    flags = []
+
+    rvol = features.get("volume_rvol_20d", 1.0)
+    zscore = features.get("volume_zscore_20d", 0.0)
+    tight_flag = features.get("tight_range_high_volume_flag", 0)
+
+    rvol_component = min((rvol - 1) / 2.0, 1.0) * 50
+    rvol_component = max(rvol_component, 0.0)
+    zscore_component = min(abs(zscore) / 3.0, 1.0) * 30
+    tight_range_component = tight_flag * 20
+
+    if rvol_component > 25:
+        flags.append(f"Elevated relative volume: {rvol:.2f}x")
+    if zscore_component > 15:
+        flags.append(f"High volume z-score: {zscore:.2f}")
+    if tight_flag:
+        flags.append("Tight price range with high volume detected")
+
+    score = float(np.clip(rvol_component + zscore_component + tight_range_component, 0.0, 100.0))
+
+    return {
+        "signal_type": "volume_anomaly",
+        "score": score,
+        "flags": flags,
+    }

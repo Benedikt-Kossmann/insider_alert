@@ -1,0 +1,26 @@
+tickers:
+  - AAPL
+  - MSFT
+  - NVDA
+
+scoring:
+  alert_threshold: 60
+  weights:
+    price_anomaly: 0.15
+    volume_anomaly: 0.15
+    orderflow_anomaly: 0.10
+    options_anomaly: 0.20
+    insider_signal: 0.20
+    event_leadup: 0.10
+    news_divergence: 0.05
+    accumulation_pattern: 0.05
+
+feature_engine:
+  rolling_window: 20
+  zscore_window: 20
+  rvol_window: 20
+
+scheduler:
+  eod_hour: 17
+  eod_minute: 30
+  intraday_interval_minutes: 30
