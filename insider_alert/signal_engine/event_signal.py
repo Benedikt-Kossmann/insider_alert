@@ -14,6 +14,7 @@ def compute_event_leadup_signal(features: dict) -> dict:
     pre_volume = features.get("pre_event_volume_score", 0.0)
     pre_options = features.get("pre_event_options_score", 0.0)
     days_to_earnings = features.get("days_to_earnings", 999)
+    days_to_corporate_event = features.get("days_to_corporate_event", 999)
 
     return_component = pre_return * 35
     volume_component = pre_volume * 35
@@ -21,6 +22,8 @@ def compute_event_leadup_signal(features: dict) -> dict:
 
     if days_to_earnings <= 10:
         flags.append(f"Earnings in {days_to_earnings} days")
+    if days_to_corporate_event <= 10 and days_to_corporate_event != days_to_earnings:
+        flags.append(f"Material corporate event (8-K) in {days_to_corporate_event} days")
     if return_component > 17:
         flags.append(f"Pre-event price movement: score={pre_return:.2f}")
     if volume_component > 17:
