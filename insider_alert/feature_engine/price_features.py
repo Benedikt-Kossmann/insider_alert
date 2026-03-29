@@ -6,6 +6,9 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
+# Minimum relative gap (open vs prior close) to count as a gap-up/gap-down day
+GAP_THRESHOLD = 0.005  # 0.5%
+
 
 def compute_price_features(ohlcv: pd.DataFrame) -> dict:
     """Compute price-based features from OHLCV data."""
@@ -63,9 +66,9 @@ def compute_price_features(ohlcv: pd.DataFrame) -> dict:
             if np.isnan(o) or np.isnan(pc) or pc == 0:
                 continue
             gap = (o - pc) / pc
-            if gap > 0.005:
+            if gap > GAP_THRESHOLD:
                 gap_up_count_5d += 1
-            elif gap < -0.005:
+            elif gap < -GAP_THRESHOLD:
                 gap_down_count_5d += 1
 
     return {

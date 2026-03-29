@@ -7,6 +7,11 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
+# Minimum single-contract volume to classify a trade as a "block trade"
+BLOCK_TRADE_VOLUME_THRESHOLD = 1000
+# Short-dated options window in calendar days
+SHORT_DATED_WINDOW_DAYS = 14
+
 
 def compute_options_features(options_df: pd.DataFrame, current_price: float) -> dict:
     """Compute options-based features."""
@@ -72,7 +77,7 @@ def compute_options_features(options_df: pd.DataFrame, current_price: float) -> 
     if not calls.empty and total_call_vol > 0:
         try:
             today = datetime.now().date()
-            cutoff = today + timedelta(days=14)
+            cutoff = today + timedelta(days=SHORT_DATED_WINDOW_DAYS)
             otm_calls = calls[calls["strike"] > current_price].copy()
             otm_calls["exp_date"] = pd.to_datetime(otm_calls["expiration"], errors="coerce").dt.date
             short_otm = otm_calls[otm_calls["exp_date"] <= cutoff]
@@ -82,7 +87,7 @@ def compute_options_features(options_df: pd.DataFrame, current_price: float) -> 
 
     total_vol = float(df["volume"].sum())
     if total_vol > 0:
-        block_trade_score = float((df["volume"] > 1000).sum() / len(df))
+        block_trade_score = float((df["volume"] > BLOCK_TRADE_VOLUME_THRESHOLD).sum() / len(df))
     else:
         block_trade_score = 0.0
 

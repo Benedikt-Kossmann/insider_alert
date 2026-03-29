@@ -6,6 +6,9 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
+# Percentage proximity to 10-day high to classify as "near resistance"
+NEAR_RESISTANCE_THRESHOLD = 0.02  # 2%
+
 
 def compute_accumulation_features(ohlcv: pd.DataFrame) -> dict:
     """Compute accumulation pattern features using last 10 rows of OHLCV data."""
@@ -51,7 +54,7 @@ def compute_accumulation_features(ohlcv: pd.DataFrame) -> dict:
         last_close = float(df10["close"].iloc[-1])
         if len(vols) >= 2:
             vol_trend_positive = vols[-1] > vols[0]
-            near_resistance = abs(last_close - high_10d) / (high_10d + 1e-9) < 0.02
+            near_resistance = abs(last_close - high_10d) / (high_10d + 1e-9) < NEAR_RESISTANCE_THRESHOLD
             if vol_trend_positive and near_resistance:
                 volume_under_resistance_score = 0.7
 

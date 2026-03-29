@@ -11,6 +11,7 @@ import requests
 
 logger = logging.getLogger(__name__)
 
+# SEC EDGAR requires CIK numbers zero-padded to 10 digits in the URL path
 _EDGAR_SUBMISSIONS = "https://data.sec.gov/submissions/CIK{cik:010d}.json"
 _EDGAR_USER_AGENT = os.getenv(
     "EDGAR_USER_AGENT",

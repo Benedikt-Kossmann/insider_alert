@@ -6,6 +6,13 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
+# RVOL normalisation: scores max out at this multiple of average volume
+RVOL_NORMALISATION_FACTOR = 3.0
+# Range ratio below which a bar is considered "tight" (potential iceberg indicator)
+TIGHT_RANGE_THRESHOLD = 0.01  # (high-low)/close < 1%
+# RVOL above which closing near the high indicates absorption
+ABSORPTION_RVOL_THRESHOLD = 1.5
+
 
 def compute_orderflow_features(ohlcv: pd.DataFrame) -> dict:
     """Compute order-flow features estimated from OHLCV data."""
@@ -43,10 +50,10 @@ def compute_orderflow_features(ohlcv: pd.DataFrame) -> dict:
     large_trade_count = float(np.clip(rvol * aggressive_buy_ratio / 5.0, 0.0, 1.0))
 
     range_ratio = (h - lo) / (c + 1e-9)
-    iceberg_suspect_score = float(np.clip(rvol / 3.0, 0.0, 1.0)) if range_ratio < 0.01 else 0.0
+    iceberg_suspect_score = float(np.clip(rvol / RVOL_NORMALISATION_FACTOR, 0.0, 1.0)) if range_ratio < TIGHT_RANGE_THRESHOLD else 0.0
 
     close_near_high = (h - c) / (h - lo + 1e-9) < 0.2
-    absorption_score = 1 if (close_near_high and rvol > 1.5) else 0
+    absorption_score = 1 if (close_near_high and rvol > ABSORPTION_RVOL_THRESHOLD) else 0
 
     vwap_accumulation_score = 0.0
     if len(df) >= 5:

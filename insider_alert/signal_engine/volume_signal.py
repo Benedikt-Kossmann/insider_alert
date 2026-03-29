@@ -5,6 +5,13 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
+# Scoring weights / normalisation constants for the volume anomaly signal
+_RVOL_NORMALISER = 2.0         # an RVOL excess of 2.0× yields maximum contribution
+_RVOL_MAX_SCORE = 50           # maximum score points from RVOL component
+_ZSCORE_NORMALISER = 3.0       # volume z-score that yields maximum contribution
+_ZSCORE_MAX_SCORE = 30         # maximum score points from the z-score component
+_TIGHT_RANGE_MAX_SCORE = 20    # maximum score points from the tight-range flag
+
 
 def compute_volume_anomaly_signal(features: dict) -> dict:
     """Compute volume anomaly signal from volume features."""
@@ -14,14 +21,14 @@ def compute_volume_anomaly_signal(features: dict) -> dict:
     zscore = features.get("volume_zscore_20d", 0.0)
     tight_flag = features.get("tight_range_high_volume_flag", 0)
 
-    rvol_component = min((rvol - 1) / 2.0, 1.0) * 50
+    rvol_component = min((rvol - 1) / _RVOL_NORMALISER, 1.0) * _RVOL_MAX_SCORE
     rvol_component = max(rvol_component, 0.0)
-    zscore_component = min(abs(zscore) / 3.0, 1.0) * 30
-    tight_range_component = tight_flag * 20
+    zscore_component = min(abs(zscore) / _ZSCORE_NORMALISER, 1.0) * _ZSCORE_MAX_SCORE
+    tight_range_component = tight_flag * _TIGHT_RANGE_MAX_SCORE
 
-    if rvol_component > 25:
+    if rvol_component > _RVOL_MAX_SCORE / 2:
         flags.append(f"Elevated relative volume: {rvol:.2f}x")
-    if zscore_component > 15:
+    if zscore_component > _ZSCORE_MAX_SCORE / 2:
         flags.append(f"High volume z-score: {zscore:.2f}")
     if tight_flag:
         flags.append("Tight price range with high volume detected")

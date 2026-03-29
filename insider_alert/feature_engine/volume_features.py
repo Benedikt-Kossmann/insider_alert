@@ -6,6 +6,10 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
+# Thresholds for the tight-range / high-volume flag
+TIGHT_RANGE_THRESHOLD = 0.01    # (high-low)/close must be below 1% to qualify as tight
+ELEVATED_VOLUME_THRESHOLD = 1.5  # RVOL must exceed 1.5x to qualify as elevated
+
 
 def compute_volume_features(ohlcv: pd.DataFrame) -> dict:
     """Compute volume-based features from OHLCV data."""
@@ -57,7 +61,7 @@ def compute_volume_features(ohlcv: pd.DataFrame) -> dict:
             lo = float(lows.iloc[-1])
             c = float(closes.iloc[-1])
             range_ratio = (h - lo) / (c + 1e-9)
-            if range_ratio < 0.01 and volume_rvol_20d > 1.5:
+            if range_ratio < TIGHT_RANGE_THRESHOLD and volume_rvol_20d > ELEVATED_VOLUME_THRESHOLD:
                 tight_range_high_volume_flag = 1
 
     return {
