@@ -8,6 +8,82 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 logger = logging.getLogger(__name__)
 
 
+def run_trade_alerts_for_ticker(
+    ticker: str,
+    config,
+    ohlcv,
+    price_features: dict,
+    volume_features: dict,
+    options_features: dict,
+    event_features: dict,
+    news_features: dict,
+) -> None:
+    """Run all trade-alert detectors and send Telegram messages as appropriate."""
+    from insider_alert.trade_alert_engine.breakout_alert import detect_breakout
+    from insider_alert.trade_alert_engine.mean_reversion_alert import detect_mean_reversion
+    from insider_alert.trade_alert_engine.options_flow_alert import detect_options_flow
+    from insider_alert.trade_alert_engine.event_driven_alert import detect_event_driven
+    from insider_alert.trade_alert_engine.multi_timeframe_alert import detect_multi_timeframe
+    from insider_alert.alert_engine.telegram_alert import maybe_send_trade_alert
+
+    ta_cfg = config.trade_alerts
+    if not ta_cfg.get("enabled", True):
+        return
+
+    score_threshold = float(ta_cfg.get("score_threshold", 55))
+    cooldown_hours = float(ta_cfg.get("cooldown_hours", 4))
+
+    bo_cfg = ta_cfg.get("breakout", {})
+    mr_cfg = ta_cfg.get("mean_reversion", {})
+    of_cfg = ta_cfg.get("options_flow", {})
+    ev_cfg = ta_cfg.get("event_driven", {})
+
+    detectors = [
+        lambda: detect_breakout(
+            ohlcv, price_features, volume_features,
+            breakout_window=int(bo_cfg.get("window", 20)),
+            volume_confirmation=float(bo_cfg.get("volume_confirmation", 1.5)),
+            impulse_factor=float(bo_cfg.get("impulse_factor", 1.0)),
+            rr_ratio=float(bo_cfg.get("rr_ratio", 2.0)),
+        ),
+        lambda: detect_mean_reversion(
+            price_features, volume_features, news_features,
+            zscore_threshold=float(mr_cfg.get("zscore_threshold", 2.5)),
+            rr_ratio=float(mr_cfg.get("rr_ratio", 1.5)),
+        ),
+        lambda: detect_options_flow(
+            options_features, event_features,
+            sweep_threshold=float(of_cfg.get("sweep_threshold", 0.6)),
+            block_threshold=float(of_cfg.get("block_threshold", 0.5)),
+            iv_jump_threshold=float(of_cfg.get("iv_jump_threshold", 0.20)),
+            oi_change_threshold=float(of_cfg.get("oi_change_threshold", 0.30)),
+            call_zscore_threshold=float(of_cfg.get("call_zscore_threshold", 2.0)),
+        ),
+        lambda: detect_event_driven(
+            ticker, event_features, price_features, volume_features, options_features,
+            pre_earnings_window=int(ev_cfg.get("pre_earnings_window", 10)),
+            post_earnings_move=float(ev_cfg.get("post_earnings_move", 0.05)),
+        ),
+        lambda: detect_multi_timeframe(price_features, None),
+    ]
+
+    for detect_fn in detectors:
+        try:
+            alert = detect_fn()
+            if alert is None:
+                continue
+            maybe_send_trade_alert(
+                ticker,
+                alert,
+                config.telegram_token,
+                config.telegram_chat_id,
+                score_threshold=score_threshold,
+                cooldown_hours=cooldown_hours,
+            )
+        except Exception as exc:
+            logger.error("Trade alert detector failed for %s: %s", ticker, exc, exc_info=True)
+
+
 def run_analysis_for_ticker(ticker: str, config) -> None:
     """Run full analysis pipeline for one ticker."""
     from insider_alert.data_ingestion.market_data import fetch_ohlcv_daily
@@ -104,6 +180,11 @@ def run_analysis_for_ticker(ticker: str, config) -> None:
         if sent:
             message = build_alert_message(ticker_score)
             save_alert(ticker, today, ticker_score.total_score, message)
+
+        # Run trade-alert detectors (Breakout, Mean-Reversion, Options, Event, MTF)
+        run_trade_alerts_for_ticker(
+            ticker, config, ohlcv, price_f, volume_f, options_f, event_f, news_f
+        )
 
         logger.info(
             "Analysis complete for %s: score=%.1f, alert_sent=%s",

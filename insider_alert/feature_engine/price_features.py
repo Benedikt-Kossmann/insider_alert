@@ -8,6 +8,35 @@ logger = logging.getLogger(__name__)
 
 # Minimum relative gap (open vs prior close) to count as a gap-up/gap-down day
 GAP_THRESHOLD = 0.005  # 0.5%
+# ATR rolling window (days)
+ATR_WINDOW = 14
+
+
+def compute_atr(df: pd.DataFrame, window: int = ATR_WINDOW) -> float:
+    """Compute the Average True Range for the most recent *window* bars.
+
+    Requires columns ``high``, ``low``, ``close`` (case-insensitive).
+    Returns 0.0 when the DataFrame is too short or columns are missing.
+    """
+    d = df.copy()
+    d.columns = [c.lower() for c in d.columns]
+    required = {"high", "low", "close"}
+    if not required.issubset(d.columns):
+        return 0.0
+    if len(d) < 2:
+        return 0.0
+
+    prev_close = d["close"].shift(1)
+    true_range = pd.concat(
+        [
+            d["high"] - d["low"],
+            (d["high"] - prev_close).abs(),
+            (d["low"] - prev_close).abs(),
+        ],
+        axis=1,
+    ).max(axis=1)
+    atr_series = true_range.rolling(window, min_periods=1).mean()
+    return float(atr_series.iloc[-1]) if not atr_series.empty else 0.0
 
 
 def compute_price_features(ohlcv: pd.DataFrame) -> dict:
@@ -20,6 +49,8 @@ def compute_price_features(ohlcv: pd.DataFrame) -> dict:
         "daily_return_zscore": 0.0,
         "gap_up_count_5d": 0,
         "gap_down_count_5d": 0,
+        "atr_14": 0.0,
+        "atr_pct": 0.0,
     }
     if ohlcv is None or ohlcv.empty or len(ohlcv) < 2:
         return defaults
@@ -71,6 +102,10 @@ def compute_price_features(ohlcv: pd.DataFrame) -> dict:
             elif gap < -GAP_THRESHOLD:
                 gap_down_count_5d += 1
 
+    atr_14 = compute_atr(df, window=ATR_WINDOW)
+    current_price = float(closes.iloc[-1])
+    atr_pct = atr_14 / (current_price + 1e-9)
+
     return {
         "return_1d": return_1d,
         "return_3d": return_3d,
@@ -79,4 +114,6 @@ def compute_price_features(ohlcv: pd.DataFrame) -> dict:
         "daily_return_zscore": daily_return_zscore,
         "gap_up_count_5d": gap_up_count_5d,
         "gap_down_count_5d": gap_down_count_5d,
+        "atr_14": atr_14,
+        "atr_pct": atr_pct,
     }

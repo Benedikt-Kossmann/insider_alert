@@ -31,6 +31,7 @@ class TestPriceFeatures(unittest.TestCase):
         expected_keys = {
             "return_1d", "return_3d", "return_5d", "return_10d",
             "daily_return_zscore", "gap_up_count_5d", "gap_down_count_5d",
+            "atr_14", "atr_pct",
         }
         self.assertEqual(set(result.keys()), expected_keys)
 
