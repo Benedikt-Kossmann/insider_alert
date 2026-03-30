@@ -2,6 +2,48 @@ tickers:
   - AAPL
   - MSFT
   - NVDA
+  - AMZN
+  - GOOGL
+  - META
+  - TSLA
+  - NFLX
+  - AMD
+  - AVGO
+  - QCOM
+  - ARM
+  - SMCI
+  - PLTR
+  - CRM
+  - ORCL
+  - SNOW
+  - SHOP
+  - UBER
+  - COIN
+  - HOOD
+  - JPM
+  - BAC
+  - GS
+  - MS
+  - WFC
+  - C
+  - V
+  - MA
+  - XOM
+  - CVX
+  - OXY
+  - SLB
+  - CAT
+  - GE
+  - UNH
+  - LLY
+  - JNJ
+  - ABBV
+  - MRK
+  - ISRG
+  - MRNA
+  - SOFI
+  - RIVN
+  - LCID
 
 scoring:
   alert_threshold: 60
@@ -23,4 +65,4 @@ feature_engine:
 scheduler:
   eod_hour: 17
   eod_minute: 30
-  intraday_interval_minutes: 30
+  intraday_interval_minutes: 60
