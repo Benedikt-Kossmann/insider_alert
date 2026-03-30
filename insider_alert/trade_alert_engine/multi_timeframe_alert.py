@@ -6,7 +6,6 @@ aligns with the daily directional bias.
 """
 import logging
 
-import numpy as np
 import pandas as pd
 
 logger = logging.getLogger(__name__)
@@ -92,6 +91,6 @@ def detect_multi_timeframe(
         "daily_return_5d": round(daily_return_5d, 4),
         "daily_zscore": round(daily_zscore, 3),
         "atr": round(atr_14, 4),
-        "score": float(np.clip(score, 0.0, 100.0)),
+        "score": float(min(max(score, 0.0), 100.0)),
         "flags": flags,
     }

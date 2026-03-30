@@ -5,8 +5,6 @@ catalysts.  Alerts include a sector tag for filtering purposes.
 """
 import logging
 
-import numpy as np
-
 logger = logging.getLogger(__name__)
 
 # Sectors mapped to a representative label (extend as needed)
@@ -112,6 +110,6 @@ def detect_event_driven(
         "days_to_corp_event": days_to_corp_event,
         "return_1d": round(return_1d, 4),
         "atr": round(atr_14, 4),
-        "score": float(np.clip(score, 0.0, 100.0)),
+        "score": float(min(max(score, 0.0), 100.0)),
         "flags": flags,
     }

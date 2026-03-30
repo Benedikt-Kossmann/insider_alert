@@ -552,7 +552,8 @@ class TestUniverseScanner(unittest.TestCase):
 class TestAlertDeduplication(unittest.TestCase):
 
     def _tmp_db(self) -> str:
-        import tempfile, os
+        import tempfile
+        import os
         f = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
         f.close()
         return f"sqlite:///{f.name}"

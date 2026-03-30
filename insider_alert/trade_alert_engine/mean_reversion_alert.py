@@ -5,8 +5,6 @@ counter-move.  Optionally combines with news divergence to filter noise.
 """
 import logging
 
-import numpy as np
-
 logger = logging.getLogger(__name__)
 
 DEFAULT_ZSCORE_THRESHOLD = 2.5   # |Z-score| that triggers an alert
@@ -71,6 +69,6 @@ def detect_mean_reversion(
         "atr": round(atr_14, 4),
         "atr_pct": round(atr_pct, 4),
         "rr_ratio": rr_ratio,
-        "score": float(np.clip(score, 0.0, 100.0)),
+        "score": float(min(max(score, 0.0), 100.0)),
         "flags": flags,
     }

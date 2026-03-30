@@ -6,8 +6,6 @@ options behaviour.
 """
 import logging
 
-import numpy as np
-
 logger = logging.getLogger(__name__)
 
 DEFAULT_SWEEP_THRESHOLD = 0.6        # sweep_order_score above which we flag
@@ -94,6 +92,6 @@ def detect_options_flow(
         "iv_change": round(iv_change, 4),
         "oi_change": round(oi_change, 4),
         "near_earnings": near_earnings,
-        "score": float(np.clip(score, 0.0, 100.0)),
+        "score": float(min(max(score, 0.0), 100.0)),
         "flags": flags,
     }

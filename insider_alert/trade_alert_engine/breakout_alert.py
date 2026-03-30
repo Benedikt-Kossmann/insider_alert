@@ -6,7 +6,6 @@ basic reward:risk estimate are included in the returned alert dict.
 """
 import logging
 
-import numpy as np
 import pandas as pd
 
 logger = logging.getLogger(__name__)
@@ -113,6 +112,6 @@ def detect_breakout(
         "stop_hint": round(stop_hint, 4),
         "target_hint": round(target_hint, 4),
         "rr_ratio": rr_ratio,
-        "score": float(np.clip(score, 0.0, 100.0)),
+        "score": float(min(max(score, 0.0), 100.0)),
         "flags": flags,
     }
