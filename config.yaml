@@ -66,3 +66,30 @@ scheduler:
   eod_hour: 17
   eod_minute: 30
   intraday_interval_minutes: 60
+
+trade_alerts:
+  enabled: true
+  score_threshold: 55
+  cooldown_hours: 4
+  breakout:
+    window: 20
+    volume_confirmation: 1.5
+    impulse_factor: 1.0
+    rr_ratio: 2.0
+  mean_reversion:
+    zscore_threshold: 2.5
+    rr_ratio: 1.5
+  options_flow:
+    sweep_threshold: 0.6
+    block_threshold: 0.5
+    iv_jump_threshold: 0.20
+    oi_change_threshold: 0.30
+    call_zscore_threshold: 2.0
+  event_driven:
+    pre_earnings_window: 10
+    post_earnings_move: 0.05
+  universe_scan:
+    rvol_add_threshold: 2.0
+    rvol_remove_threshold: 0.8
+    earnings_add_window: 14
+    news_score_add: 0.5

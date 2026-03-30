@@ -43,7 +43,10 @@ class Alert(Base):
     ticker = Column(String(16), nullable=False)
     date = Column(Date, nullable=False)
     score = Column(Float, nullable=False)
+    alert_type = Column(String(64), nullable=True)
+    setup_type = Column(String(64), nullable=True)
     message = Column(Text, nullable=True)
+    sent_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
@@ -111,6 +114,8 @@ def save_alert(
     date_val: date,
     score: float,
     message: str,
+    alert_type: str = "",
+    setup_type: str = "",
     db_url: str = "sqlite:///insider_alert.db",
 ) -> None:
     """Persist a sent alert."""
@@ -122,7 +127,10 @@ def save_alert(
             ticker=ticker,
             date=date_val,
             score=score,
+            alert_type=alert_type,
+            setup_type=setup_type,
             message=message,
+            sent_at=datetime.now(timezone.utc),
         )
         session.add(record)
         session.commit()
@@ -157,3 +165,29 @@ def get_recent_scores(
             }
             for r in records
         ]
+
+
+def is_alert_duplicate(
+    ticker: str,
+    setup_type: str,
+    cooldown_hours: float = 4.0,
+    db_url: str = "sqlite:///insider_alert.db",
+) -> bool:
+    """Return True if an alert for *ticker* / *setup_type* was already sent within
+    the cooldown window, preventing duplicate Telegram messages."""
+    from datetime import timedelta
+    engine = _get_engine(db_url)
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=cooldown_hours)
+    with Session() as session:
+        count = (
+            session.query(Alert)
+            .filter(
+                Alert.ticker == ticker,
+                Alert.setup_type == setup_type,
+                Alert.sent_at >= cutoff,
+            )
+            .count()
+        )
+    return count > 0
