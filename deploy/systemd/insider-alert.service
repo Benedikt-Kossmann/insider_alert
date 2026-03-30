@@ -1,0 +1,15 @@
+[Unit]
+Description=Insider Alert Scheduler
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/insider_alert
+ExecStart=/opt/insider_alert/.venv/bin/python main.py schedule
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

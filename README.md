@@ -82,6 +82,8 @@ python main.py scan --ticker NVDA
 python main.py schedule
 ```
 
+For Ubuntu server operation, use `systemd` instead of `screen`. See [docs/ubuntu-deployment.md](/opt/insider_alert/docs/ubuntu-deployment.md).
+
 ---
 
 ## Output
@@ -118,6 +120,21 @@ Flags:
 ```bash
 python -m unittest discover tests -v
 ```
+
+---
+
+## Deployment
+
+For a persistent Ubuntu server setup:
+
+- use a virtual environment
+- run `python main.py schedule` via `systemd`
+- restart the service after pulling repo changes
+
+Reference files:
+
+- [docs/ubuntu-deployment.md](/opt/insider_alert/docs/ubuntu-deployment.md)
+- [deploy/systemd/insider-alert.service](/opt/insider_alert/deploy/systemd/insider-alert.service)
 
 ---
 
