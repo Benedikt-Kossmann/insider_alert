@@ -5,7 +5,6 @@ share counts and transaction values.
 Falls back to empty DataFrame if network unavailable.
 """
 import logging
-import os
 import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
@@ -13,37 +12,20 @@ from datetime import datetime, timedelta
 import pandas as pd
 import requests
 
+from insider_alert.data_ingestion.sec_utils import (
+    get_cik_for_ticker as _get_cik_for_ticker,
+    EDGAR_HEADERS as _HEADERS,
+    EDGAR_SUBMISSIONS as _EDGAR_SUBMISSIONS,
+    EDGAR_REQUEST_DELAY as _EDGAR_REQUEST_DELAY,
+)
+
 logger = logging.getLogger(__name__)
 
-# SEC EDGAR requires CIK numbers zero-padded to 10 digits in the URL path
-_EDGAR_SUBMISSIONS = "https://data.sec.gov/submissions/CIK{cik:010d}.json"
+# SEC EDGAR URL templates
 _EDGAR_ARCHIVES = "https://www.sec.gov/Archives/edgar/data/{cik}/{accession_nodashes}/{document}"
 _EDGAR_INDEX = "https://www.sec.gov/Archives/edgar/data/{cik}/{accession_nodashes}/{accession}-index.json"
-_EDGAR_USER_AGENT = os.getenv(
-    "EDGAR_USER_AGENT",
-    "insider_alert_bot contact@example.com",
-)
-_HEADERS = {"User-Agent": _EDGAR_USER_AGENT}
 # Maximum number of Form-4 XML documents to parse per call (rate-limit friendly)
 _MAX_FORM4_FETCH = 10
-# Polite delay between EDGAR requests in seconds
-_EDGAR_REQUEST_DELAY = 0.12
-
-
-def _get_cik_for_ticker(ticker: str) -> str | None:
-    """Resolve ticker to SEC CIK using EDGAR company search."""
-    try:
-        url = "https://www.sec.gov/files/company_tickers.json"
-        resp = requests.get(url, headers=_HEADERS, timeout=10)
-        resp.raise_for_status()
-        data = resp.json()
-        ticker_upper = ticker.upper()
-        for entry in data.values():
-            if entry.get("ticker", "").upper() == ticker_upper:
-                return str(entry["cik_str"])
-    except Exception as exc:
-        logger.warning("CIK lookup failed for %s: %s", ticker, exc)
-    return None
 
 
 def _xml_text(element, path: str) -> str:

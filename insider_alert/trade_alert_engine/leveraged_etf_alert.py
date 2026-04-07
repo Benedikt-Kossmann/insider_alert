@@ -11,6 +11,7 @@ def detect_leveraged_etf_entry(
     vol_regime_features: dict,
     leverage_features: dict,
     risk_cfg: dict | None = None,
+    entry_cfg: dict | None = None,
     *,
     direction: str = "long",
     underlying: str = "",
@@ -32,6 +33,8 @@ def detect_leveraged_etf_entry(
         Output of ``compute_leverage_features()``.
     risk_cfg : dict | None
         Risk config dict (``config.leveraged_etfs['risk']``).
+    entry_cfg : dict | None
+        Entry config dict (``config.leveraged_etfs['entry']``).
     direction : str
         ``'long'`` or ``'short'``.
     underlying : str
@@ -44,6 +47,11 @@ def detect_leveraged_etf_entry(
     dict | None
         Alert dict or ``None`` if no entry signal detected.
     """
+    entry_cfg = entry_cfg or {}
+    momentum_min = float(entry_cfg.get("momentum_min_score", 60))
+    health_min = float(entry_cfg.get("health_min_score", 50))
+    dip_min = float(entry_cfg.get("dip_min_score", 70))
+    vix_max = float(entry_cfg.get("vix_max", 30))
     momentum_score = float(signals.get("momentum", {}).get("score", 0))
     dip_score = float(signals.get("mean_reversion_dip", {}).get("score", 0))
     vol_score = float(signals.get("volatility_regime", {}).get("score", 0))
@@ -55,7 +63,7 @@ def detect_leveraged_etf_entry(
     flags: list[str] = []
 
     # --- Momentum entry ---
-    if momentum_score >= 60 and vix_regime != "high" and health_score >= 50:
+    if momentum_score >= momentum_min and vix_regime != "high" and health_score >= health_min:
         flags.append(f"Momentum score: {momentum_score:.0f}/100")
         flags.append(f"Leverage health: {health_score:.0f}/100")
         flags.append(f"Volatility regime: {vix_regime} (VIX={vix_current:.1f})")
@@ -76,7 +84,7 @@ def detect_leveraged_etf_entry(
         }
 
     # --- Dip-buy entry ---
-    if dip_score >= 70 and vix_current < 30:
+    if dip_score >= dip_min and vix_current < vix_max:
         flags.append(f"Dip-buy score: {dip_score:.0f}/100")
         flags.append(f"VIX: {vix_current:.1f}")
         flags.append(f"Leverage health: {health_score:.0f}/100")

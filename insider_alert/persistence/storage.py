@@ -73,7 +73,6 @@ def save_signal(
 ) -> None:
     """Persist a signal result."""
     engine = _get_engine(db_url)
-    Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
     with Session() as session:
         record = Signal(
@@ -95,7 +94,6 @@ def save_score(
 ) -> None:
     """Persist a composite score."""
     engine = _get_engine(db_url)
-    Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
     with Session() as session:
         record = Score(
@@ -120,7 +118,6 @@ def save_alert(
 ) -> None:
     """Persist a sent alert."""
     engine = _get_engine(db_url)
-    Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
     with Session() as session:
         record = Alert(
@@ -144,7 +141,6 @@ def get_recent_scores(
     """Return recent composite scores for a ticker."""
     from datetime import timedelta
     engine = _get_engine(db_url)
-    Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
     cutoff = date.today() - timedelta(days=days)
     with Session() as session:
@@ -177,7 +173,6 @@ def is_alert_duplicate(
     the cooldown window, preventing duplicate Telegram messages."""
     from datetime import timedelta
     engine = _get_engine(db_url)
-    Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
     cutoff = datetime.now(timezone.utc) - timedelta(hours=cooldown_hours)
     with Session() as session:

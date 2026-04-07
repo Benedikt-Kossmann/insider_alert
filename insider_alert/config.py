@@ -167,7 +167,7 @@ def load_config(path: str = "config.yaml") -> "Config":
     # Discovery scanner config
     discovery = raw.get("discovery", {"enabled": False})
 
-    return Config(
+    config = Config(
         tickers=tickers,
         alert_threshold=alert_threshold,
         weights=weights,
@@ -180,6 +180,42 @@ def load_config(path: str = "config.yaml") -> "Config":
         leveraged_etfs=leveraged_etfs,
         discovery=discovery,
     )
+    _validate_config(config)
+    return config
+
+
+def _validate_config(config: "Config") -> None:
+    """Validate config and log warnings for problems."""
+    # Weights should sum to ~1.0
+    w_sum = sum(config.weights.values())
+    if abs(w_sum - 1.0) > 0.01:
+        logger.warning(
+            "Scoring weights sum to %.3f (expected ~1.0). Scores will still be "
+            "normalised but relative weighting may drift.", w_sum,
+        )
+
+    # ETF weights
+    le_weights = config.leveraged_etfs.get("scoring", {}).get("weights", {})
+    if le_weights:
+        le_sum = sum(le_weights.values())
+        if abs(le_sum - 1.0) > 0.01:
+            logger.warning("ETF scoring weights sum to %.3f (expected ~1.0).", le_sum)
+
+    # Required scheduler fields
+    for key in ("eod_hour", "eod_minute", "intraday_interval_minutes"):
+        if key not in config.scheduler:
+            logger.warning("Missing scheduler field '%s', using default.", key)
+
+    # Telegram config
+    if not config.telegram_token or not config.telegram_chat_id:
+        logger.warning(
+            "TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set. "
+            "Alerts will be skipped."
+        )
+
+    # Tickers non-empty
+    if not config.tickers:
+        logger.warning("No tickers configured — nothing to analyse.")
 
 
 def get_config() -> "Config":

@@ -88,6 +88,9 @@ trade_alerts:
   event_driven:
     pre_earnings_window: 10
     post_earnings_move: 0.05
+  multi_timeframe:
+    score_threshold: 55
+    confirmation_bars: 3
   universe_scan:
     rvol_add_threshold: 2.0
     rvol_remove_threshold: 0.8
@@ -194,6 +197,12 @@ leveraged_etfs:
     max_drawdown_pct: 15.0
     stop_atr_multiplier: 1.5
     rr_ratio: 2.0
+    cooldown_hours: 4
+  entry:
+    momentum_min_score: 60
+    health_min_score: 50
+    dip_min_score: 70
+    vix_max: 30
   momentum:
     rsi_period: 14
     rsi_oversold: 30

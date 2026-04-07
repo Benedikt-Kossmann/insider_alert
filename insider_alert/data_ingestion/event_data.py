@@ -1,20 +1,18 @@
 """Corporate event data (earnings dates, 8-K filings) using yfinance and SEC EDGAR."""
 import logging
-import os
 from datetime import date, datetime, timedelta
 
 import pandas as pd
 import requests
 import yfinance as yf
 
-logger = logging.getLogger(__name__)
-
-_EDGAR_USER_AGENT = os.getenv(
-    "EDGAR_USER_AGENT",
-    "insider_alert_bot contact@example.com",
+from insider_alert.data_ingestion.sec_utils import (
+    get_cik_for_ticker as _get_cik_for_ticker,
+    EDGAR_HEADERS as _EDGAR_HEADERS,
+    EDGAR_SUBMISSIONS as _EDGAR_SUBMISSIONS,
 )
-_EDGAR_HEADERS = {"User-Agent": _EDGAR_USER_AGENT}
-_EDGAR_SUBMISSIONS = "https://data.sec.gov/submissions/CIK{cik:010d}.json"
+
+logger = logging.getLogger(__name__)
 
 # 8-K item codes that indicate material corporate events
 _MATERIAL_8K_ITEMS = {
@@ -79,22 +77,6 @@ def days_to_next_earnings(ticker: str) -> int | None:
     except Exception as exc:
         logger.warning("days_to_next_earnings failed for %s: %s", ticker, exc)
         return None
-
-
-def _get_cik_for_ticker(ticker: str) -> str | None:
-    """Resolve ticker to SEC CIK using EDGAR company search."""
-    try:
-        url = "https://www.sec.gov/files/company_tickers.json"
-        resp = requests.get(url, headers=_EDGAR_HEADERS, timeout=10)
-        resp.raise_for_status()
-        data = resp.json()
-        ticker_upper = ticker.upper()
-        for entry in data.values():
-            if entry.get("ticker", "").upper() == ticker_upper:
-                return str(entry["cik_str"])
-    except Exception as exc:
-        logger.debug("CIK lookup failed for %s: %s", ticker, exc)
-    return None
 
 
 def fetch_recent_corporate_events(ticker: str, days_back: int = 30) -> pd.DataFrame:

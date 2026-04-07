@@ -53,7 +53,10 @@ def main() -> None:
         sys.exit(0)
 
     from insider_alert.config import load_config
+    from insider_alert.persistence.storage import init_db
+
     config = load_config()
+    init_db()
 
     if args.command in ("scan", "run"):
         cmd_scan(args, config)
