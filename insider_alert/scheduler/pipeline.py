@@ -16,6 +16,9 @@ def _fetch_stock_data(ticker: str) -> dict:
     from insider_alert.data_ingestion.insider_data import fetch_insider_transactions
     from insider_alert.data_ingestion.event_data import days_to_next_earnings, fetch_recent_corporate_events
     from insider_alert.data_ingestion.news_data import fetch_news
+    from insider_alert.feature_engine.sector_features import get_sector_etf
+
+    sector_etf = get_sector_etf(ticker)
 
     return {
         "ohlcv": fetch_ohlcv_daily(ticker),
@@ -25,6 +28,8 @@ def _fetch_stock_data(ticker: str) -> dict:
         "dte": days_to_next_earnings(ticker),
         "corporate_events": fetch_recent_corporate_events(ticker),
         "news": fetch_news(ticker),
+        "sector_ohlcv": fetch_ohlcv_daily(sector_etf),
+        "sector_etf": sector_etf,
     }
 
 
@@ -53,6 +58,9 @@ def _compute_stock_features(data: dict) -> dict:
     from insider_alert.feature_engine.event_features import compute_event_features
     from insider_alert.feature_engine.news_features import compute_news_features
     from insider_alert.feature_engine.accumulation_features import compute_accumulation_features
+    from insider_alert.feature_engine.candlestick_features import detect_candlestick_patterns
+    from insider_alert.feature_engine.sr_features import compute_support_resistance
+    from insider_alert.feature_engine.sector_features import compute_relative_strength, get_sector_label
 
     ohlcv = data["ohlcv"]
     current_price = float(ohlcv["close"].iloc[-1]) if not ohlcv.empty and "close" in ohlcv.columns else 100.0
@@ -60,6 +68,10 @@ def _compute_stock_features(data: dict) -> dict:
     price_f = compute_price_features(ohlcv)
     volume_f = compute_volume_features(ohlcv)
     orderflow_f = compute_orderflow_features(ohlcv)
+
+    # Merge candlestick pattern features into orderflow dict
+    candle_patterns = detect_candlestick_patterns(ohlcv)
+    orderflow_f.update(candle_patterns)
     options_f = compute_options_features(data["options"], current_price, iv_baseline=data["iv_baseline"])
     insider_f = compute_insider_features(data["insider_txns"])
 
@@ -69,6 +81,13 @@ def _compute_stock_features(data: dict) -> dict:
     event_f = compute_event_features(data["dte"], price_f, volume_f, options_f, days_to_corp_event)
     news_f = compute_news_features(data["news"], price_f.get("return_1d", 0.0))
     accumulation_f = compute_accumulation_features(ohlcv)
+    sr_f = compute_support_resistance(ohlcv)
+
+    # Sector relative strength
+    sector_ohlcv = data.get("sector_ohlcv", pd.DataFrame())
+    sector_f = compute_relative_strength(ohlcv, sector_ohlcv)
+    sector_f["sector_etf"] = data.get("sector_etf", "SPY")
+    sector_f["sector_label"] = get_sector_label(data.get("sector_etf", "SPY"))
 
     return {
         "price": price_f,
@@ -79,6 +98,8 @@ def _compute_stock_features(data: dict) -> dict:
         "event": event_f,
         "news": news_f,
         "accumulation": accumulation_f,
+        "sr": sr_f,
+        "sector": sector_f,
     }
 
 

@@ -83,11 +83,16 @@ def send_welcome_message(config) -> bool:
     return send_telegram_message(token, chat_id, message)
 
 
-def build_alert_message(ticker_score) -> str:
+def build_alert_message(ticker_score, sr_features: dict | None = None, sector_features: dict | None = None, ml_score: float | None = None) -> str:
     """Format a TickerScore into a human-readable Telegram message."""
     lines = [
         f"🚨 *Insider Alert: {ticker_score.ticker}*",
         f"Composite Score: *{ticker_score.total_score:.1f}/100*",
+    ]
+    if ml_score is not None:
+        conf_emoji = "🟢" if ml_score >= 60 else ("🟡" if ml_score >= 40 else "🔴")
+        lines.append(f"ML Confidence: {conf_emoji} *{ml_score:.0f}%*")
+    lines += [
         "",
         "*Sub-scores:*",
     ]
@@ -98,13 +103,41 @@ def build_alert_message(ticker_score) -> str:
         lines.append("*Flags:*")
         for flag in ticker_score.flags[:10]:
             lines.append(f"  ⚠️ {flag}")
+
+    # S/R levels
+    if sr_features:
+        ns = sr_features.get("nearest_support", 0)
+        nr = sr_features.get("nearest_resistance", 0)
+        zone = sr_features.get("sr_zone", "mid_range")
+        if ns > 0 or nr > 0:
+            lines.append("")
+            lines.append("*S/R Levels:*")
+            if ns > 0:
+                lines.append(f"  📉 Support: `${ns:,.2f}` ({sr_features.get('distance_to_support_pct', 0):.1f}% entfernt)")
+            if nr > 0:
+                lines.append(f"  📈 Resistance: `${nr:,.2f}` ({sr_features.get('distance_to_resistance_pct', 0):.1f}% entfernt)")
+            zone_labels = {"near_support": "📍 Nahe Support", "near_resistance": "📍 Nahe Resistance", "mid_range": "↔️ Mittelzone"}
+            lines.append(f"  Zone: {zone_labels.get(zone, zone)}")
+
+    # Sector relative strength
+    if sector_features:
+        trend = sector_features.get("relative_trend", "inline")
+        rs_5d = sector_features.get("rs_5d", 0)
+        label = sector_features.get("sector_label", "")
+        etf = sector_features.get("sector_etf", "")
+        trend_emoji = {"outperforming": "💪", "inline": "↔️", "underperforming": "📉"}
+        if label or etf:
+            lines.append("")
+            lines.append(f"*Sektor ({label} / {etf}):*")
+            lines.append(f"  {trend_emoji.get(trend, '')} {trend.title()} (RS 5d: {rs_5d:+.1f}%)")
+
     return "\n".join(lines)
 
 
-def maybe_send_alert(ticker_score, token: str, chat_id: str, threshold: float = 60.0) -> bool:
+def maybe_send_alert(ticker_score, token: str, chat_id: str, threshold: float = 60.0, sr_features: dict | None = None, sector_features: dict | None = None, ml_score: float | None = None) -> bool:
     """Send alert if total_score >= threshold. Returns True if sent."""
     if ticker_score.total_score >= threshold:
-        message = build_alert_message(ticker_score)
+        message = build_alert_message(ticker_score, sr_features, sector_features, ml_score=ml_score)
         return send_telegram_message(token, chat_id, message)
     return False
 

@@ -108,12 +108,17 @@ def run_analysis_for_ticker(ticker: str, config, macro_features: dict | None = N
         signals = _compute_stock_signals(features, macro_features)
         ticker_score = compute_score(ticker, signals, config.weights)
 
+        # ML scoring overlay
+        ml_score = _get_ml_score(signals)
+
         _persist_signals_and_score(ticker, signals, ticker_score)
         save_signal_outcomes(ticker, date.today(), signals, ticker_score.total_score)
 
-        sent = maybe_send_alert(ticker_score, config.telegram_token, config.telegram_chat_id, config.alert_threshold)
+        sr_features = features.get("sr")
+        sector_features = features.get("sector")
+        sent = maybe_send_alert(ticker_score, config.telegram_token, config.telegram_chat_id, config.alert_threshold, sr_features=sr_features, sector_features=sector_features, ml_score=ml_score)
         if sent:
-            message = build_alert_message(ticker_score)
+            message = build_alert_message(ticker_score, sr_features, sector_features, ml_score=ml_score)
             save_alert(ticker, date.today(), ticker_score.total_score, message)
 
         # Run trade-alert detectors
@@ -286,6 +291,45 @@ def _run_outcome_backfill() -> None:
         logger.warning("Outcome backfill failed: %s", exc)
 
 
+def _try_adaptive_weights(config) -> None:
+    """Adjust scoring weights based on outcome data if enough samples exist."""
+    try:
+        from insider_alert.scoring_engine.adaptive_weights import compute_adaptive_weights
+        new_weights = compute_adaptive_weights(config.weights)
+        if new_weights != config.weights:
+            config.weights = new_weights
+            logger.info("Adaptive weights applied for this EOD run.")
+    except Exception as exc:
+        logger.warning("Adaptive weight adjustment failed: %s", exc)
+
+
+def _get_ml_score(signals: list[dict]) -> float | None:
+    """Get ML model prediction for a set of signals. Returns None if unavailable."""
+    try:
+        from insider_alert.scoring_engine.ml_scorer import predict_score
+        return predict_score(signals)
+    except Exception:
+        return None
+
+
+def _try_ml_retrain() -> None:
+    """Retrain the ML model if due."""
+    try:
+        from insider_alert.scoring_engine.ml_scorer import maybe_retrain
+        maybe_retrain()
+    except Exception as exc:
+        logger.warning("ML model retrain failed: %s", exc)
+
+
+def _run_weekly_report(config) -> None:
+    """Send the weekly performance report via Telegram."""
+    try:
+        from insider_alert.alert_engine.weekly_report import send_weekly_report
+        send_weekly_report(config)
+    except Exception as exc:
+        logger.error("Weekly report failed: %s", exc)
+
+
 def run_eod_job(config) -> None:
     """End-of-day batch: analyze all tickers in config."""
     # Fetch macro once for all tickers
@@ -293,6 +337,12 @@ def run_eod_job(config) -> None:
 
     # Backfill past signal outcomes
     _run_outcome_backfill()
+
+    # Try adaptive weight adjustment
+    _try_adaptive_weights(config)
+
+    # Retrain ML model if due
+    _try_ml_retrain()
 
     logger.info("Running EOD job for %d tickers", len(config.tickers))
     for ticker in config.tickers:
@@ -356,8 +406,27 @@ def start_scheduler(config, blocking: bool = True) -> None:
         name="Intraday Scan",
     )
 
+    scheduler.add_job(
+        _run_weekly_report,
+        trigger="cron",
+        day_of_week="sun",
+        hour=18,
+        minute=0,
+        args=[config],
+        id="weekly_report",
+        name="Weekly Performance Report",
+    )
+
     logger.info(
         "Scheduler starting: EOD at %02d:%02d, intraday every %dm",
         eod_hour, eod_minute, intraday_interval
     )
+
+    # Start Telegram bot command listener
+    try:
+        from insider_alert.alert_engine.telegram_bot import start_bot
+        start_bot(config)
+    except Exception as exc:
+        logger.warning("Telegram bot commands not started: %s", exc)
+
     scheduler.start()
