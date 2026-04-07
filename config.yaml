@@ -214,3 +214,13 @@ leveraged_etfs:
     vix_high: 30
     vix_low: 15
     atr_regime_window: 20
+
+discovery:
+  enabled: true
+  scan_stocks: true
+  scan_crypto: true
+  rvol_threshold: 3.0
+  move_pct_threshold: 5.0
+  gap_pct_threshold: 3.0
+  crypto_move_pct_threshold: 8.0
+  max_results: 15

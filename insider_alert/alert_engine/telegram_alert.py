@@ -67,6 +67,15 @@ def send_welcome_message(config) -> bool:
     if trade_cfg.get("enabled", False):
         lines.append("📈 Trade-Alerts: aktiv")
 
+    disc_cfg = getattr(config, "discovery", {}) or {}
+    if disc_cfg.get("enabled", False):
+        scan_parts = []
+        if disc_cfg.get("scan_stocks", True):
+            scan_parts.append("Aktien")
+        if disc_cfg.get("scan_crypto", True):
+            scan_parts.append("Krypto")
+        lines.append(f"🔍 Discovery: {' + '.join(scan_parts)}")
+
     lines.append("")
     lines.append("_Bot läuft – viel Erfolg!_ 🚀")
 
@@ -316,3 +325,39 @@ def maybe_send_etf_alert(
             db_url=db_url,
         )
     return sent
+
+
+# ---------------------------------------------------------------------------
+# Discovery scanner alert
+# ---------------------------------------------------------------------------
+
+def build_discovery_alert_message(discoveries: list) -> str:
+    """Format a list of Discovery objects into a single Telegram message."""
+    if not discoveries:
+        return ""
+
+    asset_emoji = {"stock": "📊", "crypto": "🪙"}
+    lines = [
+        "🔍 *Discovery Scanner – ungewöhnliche Aktivität*",
+        "",
+    ]
+
+    for d in discoveries:
+        emoji = asset_emoji.get(d.asset_class, "📊")
+        reasons_str = " | ".join(d.reasons)
+        lines.append(
+            f"{emoji} *{d.ticker}*  ${d.close:,.2f}  →  {reasons_str}"
+        )
+
+    lines.append("")
+    lines.append(f"_{len(discoveries)} Symbol(e) entdeckt_")
+    return "\n".join(lines)
+
+
+def send_discovery_alert(discoveries: list, token: str, chat_id: str, *, max_results: int = 15) -> bool:
+    """Send a discovery alert via Telegram. Returns True if sent."""
+    if not discoveries:
+        return False
+    capped = discoveries[:max_results]
+    message = build_discovery_alert_message(capped)
+    return send_telegram_message(token, chat_id, message)

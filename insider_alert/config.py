@@ -105,6 +105,7 @@ class Config:
     alpha_vantage_key: str
     trade_alerts: dict = field(default_factory=lambda: dict(_DEFAULT_TRADE_ALERTS))
     leveraged_etfs: dict = field(default_factory=lambda: dict(_DEFAULT_LEVERAGED_ETFS))
+    discovery: dict = field(default_factory=lambda: {"enabled": False})
 
 
 def load_config(path: str = "config.yaml") -> "Config":
@@ -163,6 +164,9 @@ def load_config(path: str = "config.yaml") -> "Config":
         else:
             leveraged_etfs[key] = value
 
+    # Discovery scanner config
+    discovery = raw.get("discovery", {"enabled": False})
+
     return Config(
         tickers=tickers,
         alert_threshold=alert_threshold,
@@ -174,6 +178,7 @@ def load_config(path: str = "config.yaml") -> "Config":
         alpha_vantage_key=os.getenv("ALPHA_VANTAGE_API_KEY", ""),
         trade_alerts=trade_alerts,
         leveraged_etfs=leveraged_etfs,
+        discovery=discovery,
     )
 
 

@@ -342,6 +342,29 @@ def run_etf_analysis_for_ticker(etf_entry: dict, config) -> None:
         logger.error("ETF analysis failed for %s: %s", ticker, exc, exc_info=True)
 
 
+def run_discovery_scan_job(config) -> None:
+    """Run the discovery scanner and send Telegram alert for findings."""
+    disc_cfg = getattr(config, "discovery", {}) or {}
+    if not disc_cfg.get("enabled", False):
+        return
+
+    from insider_alert.trade_alert_engine.discovery_scanner import run_discovery_scan
+    from insider_alert.alert_engine.telegram_alert import send_discovery_alert
+
+    try:
+        discoveries = run_discovery_scan(config)
+        if discoveries:
+            max_results = int(disc_cfg.get("max_results", 15))
+            send_discovery_alert(
+                discoveries,
+                config.telegram_token,
+                config.telegram_chat_id,
+                max_results=max_results,
+            )
+    except Exception as exc:
+        logger.error("Discovery scan failed: %s", exc, exc_info=True)
+
+
 def run_eod_job(config) -> None:
     """End-of-day batch: analyze all tickers in config."""
     logger.info("Running EOD job for %d tickers", len(config.tickers))
@@ -355,6 +378,9 @@ def run_eod_job(config) -> None:
         logger.info("Running EOD leveraged-ETF job for %d ETFs", len(universe))
         for etf_entry in universe:
             run_etf_analysis_for_ticker(etf_entry, config)
+
+    # Discovery scanner
+    run_discovery_scan_job(config)
 
 
 def run_intraday_job(config) -> None:
