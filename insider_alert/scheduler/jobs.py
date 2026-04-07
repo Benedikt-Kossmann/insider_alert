@@ -195,11 +195,166 @@ def run_analysis_for_ticker(ticker: str, config) -> None:
         logger.error("Analysis failed for %s: %s", ticker, exc, exc_info=True)
 
 
+def run_etf_analysis_for_ticker(etf_entry: dict, config) -> None:
+    """Run leveraged-ETF analysis pipeline for one ETF.
+
+    Parameters
+    ----------
+    etf_entry : dict
+        Dict with keys: ``ticker``, ``underlying``, ``direction``, ``leverage``.
+    config : Config
+        Full configuration object.
+    """
+    from insider_alert.data_ingestion.market_data import fetch_ohlcv_daily
+    from insider_alert.feature_engine.price_features import compute_price_features
+    from insider_alert.feature_engine.volume_features import compute_volume_features
+    from insider_alert.feature_engine.momentum_features import compute_momentum_features
+    from insider_alert.feature_engine.leverage_features import compute_leverage_features
+    from insider_alert.feature_engine.volatility_regime_features import compute_volatility_regime_features
+    from insider_alert.signal_engine.price_signal import compute_price_anomaly_signal
+    from insider_alert.signal_engine.volume_signal import compute_volume_anomaly_signal
+    from insider_alert.signal_engine.momentum_signal import compute_momentum_signal
+    from insider_alert.signal_engine.mean_reversion_dip_signal import compute_mean_reversion_dip_signal
+    from insider_alert.signal_engine.volatility_regime_signal import compute_volatility_regime_signal
+    from insider_alert.signal_engine.leverage_signal import compute_leverage_health_signal
+    from insider_alert.scoring_engine.scorer import compute_score
+    from insider_alert.trade_alert_engine.leveraged_etf_alert import (
+        detect_leveraged_etf_entry,
+        detect_leveraged_etf_exit,
+    )
+    from insider_alert.trade_alert_engine.risk_manager import (
+        compute_leverage_risk_hints,
+        format_leverage_risk_lines,
+    )
+    from insider_alert.alert_engine.telegram_alert import maybe_send_etf_alert
+    from insider_alert.persistence.storage import save_signal, save_score, init_db
+
+    ticker = etf_entry.get("ticker", "")
+    underlying = etf_entry.get("underlying", "")
+    direction = etf_entry.get("direction", "long")
+    leverage = int(etf_entry.get("leverage", 3))
+    le_cfg = config.leveraged_etfs
+
+    logger.info("Running ETF analysis for %s (underlying=%s, %dx %s)", ticker, underlying, leverage, direction)
+
+    try:
+        # Data ingestion
+        etf_ohlcv = fetch_ohlcv_daily(ticker)
+        und_ohlcv = fetch_ohlcv_daily(underlying)
+        vix_ticker = le_cfg.get("volatility", {}).get("vix_ticker", "^VIX")
+        vix_ohlcv = fetch_ohlcv_daily(vix_ticker)
+
+        if etf_ohlcv.empty:
+            logger.warning("No OHLCV data for ETF %s, skipping", ticker)
+            return
+
+        # Feature computation
+        price_f = compute_price_features(etf_ohlcv)
+        volume_f = compute_volume_features(etf_ohlcv)
+        momentum_f = compute_momentum_features(etf_ohlcv, le_cfg.get("momentum", {}))
+        leverage_f = compute_leverage_features(etf_ohlcv, und_ohlcv, leverage, direction)
+        vol_regime_f = compute_volatility_regime_features(
+            etf_ohlcv, vix_ohlcv,
+            bollinger_period=int(le_cfg.get("mean_reversion", {}).get("bollinger_period", 20)),
+            bollinger_std=float(le_cfg.get("mean_reversion", {}).get("bollinger_std", 2.0)),
+            atr_regime_window=int(le_cfg.get("volatility", {}).get("atr_regime_window", 20)),
+            vix_high=float(le_cfg.get("volatility", {}).get("vix_high", 30)),
+            vix_low=float(le_cfg.get("volatility", {}).get("vix_low", 15)),
+        )
+
+        # Signal generation
+        sig_momentum = compute_momentum_signal(momentum_f, direction=direction)
+        sig_dip = compute_mean_reversion_dip_signal(momentum_f, vol_regime_f, price_f, direction=direction)
+        sig_vol = compute_volatility_regime_signal(vol_regime_f, leverage_f)
+        sig_health = compute_leverage_health_signal(leverage_f)
+        sig_price = compute_price_anomaly_signal(price_f)
+        sig_volume = compute_volume_anomaly_signal(volume_f)
+
+        signals_list = [sig_momentum, sig_dip, sig_vol, sig_health, sig_price, sig_volume]
+
+        # Scoring
+        scoring_cfg = le_cfg.get("scoring", {})
+        etf_weights = scoring_cfg.get("weights", None)
+        etf_threshold = float(scoring_cfg.get("alert_threshold", 55))
+        ticker_score = compute_score(ticker, signals_list, etf_weights)
+
+        # Persistence
+        today = date.today()
+        init_db()
+        for sig in signals_list:
+            save_signal(
+                ticker=ticker,
+                date_val=today,
+                signal_type=sig["signal_type"],
+                score=sig["score"],
+                flags=sig["flags"],
+            )
+        save_score(ticker, today, ticker_score)
+
+        # Risk hints
+        atr = float(price_f.get("atr_14", 0))
+        current_price = float(etf_ohlcv["close"].iloc[-1]) if "close" in etf_ohlcv.columns else 0.0
+        risk_cfg = le_cfg.get("risk", {})
+        risk_hints = compute_leverage_risk_hints(
+            current_price, atr, direction, leverage,
+            vol_regime=vol_regime_f.get("vix_regime", "normal"),
+            estimated_decay=leverage_f.get("estimated_daily_decay", 0),
+            risk_cfg=risk_cfg,
+        )
+        risk_lines = format_leverage_risk_lines(risk_hints)
+
+        # Signal dict for alert detectors
+        signals_map = {s["signal_type"]: s for s in signals_list}
+
+        # Entry detection
+        entry = detect_leveraged_etf_entry(
+            ticker, signals_map, momentum_f, vol_regime_f, leverage_f,
+            risk_cfg=risk_cfg, direction=direction, underlying=underlying, leverage=leverage,
+        )
+        if entry:
+            entry["risk_lines"] = risk_lines
+            cooldown = float(le_cfg.get("risk", {}).get("cooldown_hours", 4.0))
+            maybe_send_etf_alert(
+                ticker, entry, config.telegram_token, config.telegram_chat_id,
+                score_threshold=etf_threshold, cooldown_hours=cooldown,
+                underlying=underlying, leverage=leverage,
+            )
+
+        # Exit detection
+        exit_alert = detect_leveraged_etf_exit(
+            ticker, leverage_f, vol_regime_f,
+            risk_cfg=risk_cfg, direction=direction, underlying=underlying, leverage=leverage,
+        )
+        if exit_alert:
+            exit_alert["risk_lines"] = risk_lines
+            maybe_send_etf_alert(
+                ticker, exit_alert, config.telegram_token, config.telegram_chat_id,
+                score_threshold=0, cooldown_hours=4.0,
+                underlying=underlying, leverage=leverage,
+            )
+
+        logger.info(
+            "ETF analysis complete for %s: score=%.1f",
+            ticker, ticker_score.total_score,
+        )
+
+    except Exception as exc:
+        logger.error("ETF analysis failed for %s: %s", ticker, exc, exc_info=True)
+
+
 def run_eod_job(config) -> None:
     """End-of-day batch: analyze all tickers in config."""
     logger.info("Running EOD job for %d tickers", len(config.tickers))
     for ticker in config.tickers:
         run_analysis_for_ticker(ticker, config)
+
+    # Leveraged-ETF analysis
+    le_cfg = config.leveraged_etfs
+    if le_cfg.get("enabled", False):
+        universe = le_cfg.get("universe", [])
+        logger.info("Running EOD leveraged-ETF job for %d ETFs", len(universe))
+        for etf_entry in universe:
+            run_etf_analysis_for_ticker(etf_entry, config)
 
 
 def run_intraday_job(config) -> None:
@@ -207,6 +362,14 @@ def run_intraday_job(config) -> None:
     logger.info("Running intraday job for %d tickers", len(config.tickers))
     for ticker in config.tickers:
         run_analysis_for_ticker(ticker, config)
+
+    # Leveraged-ETF analysis
+    le_cfg = config.leveraged_etfs
+    if le_cfg.get("enabled", False):
+        universe = le_cfg.get("universe", [])
+        logger.info("Running intraday leveraged-ETF job for %d ETFs", len(universe))
+        for etf_entry in universe:
+            run_etf_analysis_for_ticker(etf_entry, config)
 
 
 def start_scheduler(config, blocking: bool = True) -> None:

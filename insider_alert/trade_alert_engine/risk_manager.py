@@ -86,3 +86,85 @@ def format_risk_hint_lines(risk_hints: dict) -> list[str]:
     if vol and vol != "Unknown":
         lines.append(f"  📊 Volatility: {vol}")
     return lines
+
+
+def compute_leverage_risk_hints(
+    current_price: float,
+    atr: float,
+    direction: str,
+    leverage: int = 3,
+    vol_regime: str = "normal",
+    estimated_decay: float = 0.0,
+    risk_cfg: dict | None = None,
+) -> dict:
+    """Return extended risk hints for leveraged ETF positions.
+
+    Parameters
+    ----------
+    current_price : float
+        Latest closing price.
+    atr : float
+        Average True Range (absolute price units).
+    direction : str
+        ``'long'`` or ``'short'``.
+    leverage : int
+        Leverage factor (e.g. 3).
+    vol_regime : str
+        ``'low'``, ``'normal'``, or ``'high'``.
+    estimated_decay : float
+        Estimated daily decay from ``compute_leverage_features()``.
+    risk_cfg : dict | None
+        Risk config section from ``config.leveraged_etfs['risk']``.
+    """
+    risk_cfg = risk_cfg or {}
+    stop_mult = float(risk_cfg.get("stop_atr_multiplier", 1.5))
+    rr_ratio = float(risk_cfg.get("rr_ratio", 2.0))
+    max_dd = float(risk_cfg.get("max_drawdown_pct", 15.0))
+    decay_threshold = float(risk_cfg.get("decay_warning_threshold", 0.02))
+    hold_low = int(risk_cfg.get("max_holding_days_low_vol", 15))
+    hold_high = int(risk_cfg.get("max_holding_days_high_vol", 5))
+
+    # Adjust stop multiplier for high volatility
+    if vol_regime == "high":
+        stop_mult *= 1.3
+        max_holding_days = hold_high
+    elif vol_regime == "low":
+        max_holding_days = hold_low
+    else:
+        max_holding_days = (hold_low + hold_high) // 2
+
+    base = compute_risk_hints(
+        current_price, atr,
+        "bullish" if direction == "long" else "bearish",
+        stop_atr_multiplier=stop_mult,
+        rr_ratio=rr_ratio,
+    )
+
+    base["max_holding_days"] = max_holding_days
+    base["estimated_daily_decay"] = estimated_decay
+    base["decay_warning"] = estimated_decay >= decay_threshold
+    base["max_drawdown_pct"] = max_dd
+    base["leverage"] = leverage
+    return base
+
+
+def format_leverage_risk_lines(risk_hints: dict) -> list[str]:
+    """Format leverage-specific risk information for Telegram."""
+    lines = format_risk_hint_lines(risk_hints)
+
+    hold_days = risk_hints.get("max_holding_days")
+    if hold_days is not None:
+        lines.append(f"  ⏱️ Max Haltedauer: ~{hold_days} Tage")
+
+    decay = risk_hints.get("estimated_daily_decay", 0)
+    if decay > 0:
+        lines.append(f"  📉 Geschätzter Decay: {decay:.4f}/Tag")
+
+    if risk_hints.get("decay_warning"):
+        lines.append("  ⚠️ Decay-Warnung: Volatilität zu hoch für langen Halt")
+
+    max_dd = risk_hints.get("max_drawdown_pct")
+    if max_dd is not None:
+        lines.append(f"  🛡️ Max Drawdown: {max_dd:.0f}% empfohlen")
+
+    return lines

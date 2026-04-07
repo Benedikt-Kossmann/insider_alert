@@ -17,6 +17,15 @@ DEFAULT_WEIGHTS = {
     "accumulation_pattern": 0.05,
 }
 
+DEFAULT_ETF_WEIGHTS = {
+    "momentum": 0.25,
+    "mean_reversion_dip": 0.20,
+    "volatility_regime": 0.20,
+    "leverage_health": 0.15,
+    "volume_anomaly": 0.10,
+    "price_anomaly": 0.10,
+}
+
 
 @dataclass
 class TickerScore:

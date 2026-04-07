@@ -33,6 +33,47 @@ def send_telegram_message(token: str, chat_id: str, message: str) -> bool:
         return False
 
 
+def send_welcome_message(config) -> bool:
+    """Send a startup welcome message via Telegram summarising the config."""
+    token = config.telegram_token
+    chat_id = config.telegram_chat_id
+    if not token or not chat_id:
+        logger.info("Telegram not configured; skipping welcome message")
+        return False
+
+    n_tickers = len(config.tickers)
+    le_cfg = config.leveraged_etfs
+    etf_enabled = le_cfg.get("enabled", False)
+    n_etfs = len(le_cfg.get("universe", [])) if etf_enabled else 0
+
+    eod_h = config.scheduler.get("eod_hour", 17)
+    eod_m = config.scheduler.get("eod_minute", 30)
+    intra = config.scheduler.get("intraday_interval_minutes", 30)
+
+    lines = [
+        "🟢 *Insider Alert Bot gestartet*",
+        "",
+        f"📊 Aktien: {n_tickers}",
+    ]
+    if etf_enabled:
+        lines.append(f"⚡ Leveraged ETFs: {n_etfs}")
+    lines += [
+        "",
+        f"⏰ EOD-Analyse: täglich {eod_h:02d}:{eod_m:02d} UTC",
+        f"🔄 Intraday-Scan: alle {intra} Min",
+    ]
+
+    trade_cfg = config.trade_alerts
+    if trade_cfg.get("enabled", False):
+        lines.append("📈 Trade-Alerts: aktiv")
+
+    lines.append("")
+    lines.append("_Bot läuft – viel Erfolg!_ 🚀")
+
+    message = "\n".join(lines)
+    return send_telegram_message(token, chat_id, message)
+
+
 def build_alert_message(ticker_score) -> str:
     """Format a TickerScore into a human-readable Telegram message."""
     lines = [
@@ -69,6 +110,7 @@ _ALERT_EMOJI = {
     "options_flow": "🎯",
     "event_driven": "📅",
     "multi_timeframe": "🔭",
+    "leveraged_etf": "⚡",
 }
 
 
@@ -185,6 +227,91 @@ def maybe_send_trade_alert(
             score=score,
             message=message,
             alert_type=alert.get("alert_type", ""),
+            setup_type=setup_type,
+            db_url=db_url,
+        )
+    return sent
+
+
+# ---------------------------------------------------------------------------
+# Leveraged-ETF alert message builders
+# ---------------------------------------------------------------------------
+
+def build_etf_alert_message(ticker: str, alert: dict, underlying: str = "", leverage: int = 3) -> str:
+    """Format a leveraged-ETF alert for Telegram."""
+    setup_type = alert.get("setup_type", "")
+    score = alert.get("score", 0.0)
+    direction = alert.get("direction", "long")
+    dir_label = "Long" if direction == "long" else "Short/Inverse"
+
+    setup_labels = {
+        "momentum_entry": "📈 Momentum Entry",
+        "dip_buy": "🔄 Dip-Buy Signal",
+        "exit_warning": "🚨 Exit-Warnung",
+    }
+    setup_label = setup_labels.get(setup_type, setup_type)
+
+    lines = [
+        f"⚡ *Leveraged ETF Alert: {ticker}*",
+        f"{leverage}x {underlying} {dir_label}",
+        f"Setup: {setup_label}",
+    ]
+    if setup_type != "exit_warning":
+        lines.append(f"Score: *{score:.0f}/100*")
+
+    # Risk lines (if present)
+    risk_lines = alert.get("risk_lines", [])
+    if risk_lines:
+        lines.append("")
+        lines.append("*Risk:*")
+        lines.extend(risk_lines)
+
+    flags = alert.get("flags", [])
+    if flags:
+        lines.append("")
+        lines.append("*Details:*")
+        for flag in flags[:10]:
+            lines.append(f"  • {flag}")
+
+    return "\n".join(lines)
+
+
+def maybe_send_etf_alert(
+    ticker: str,
+    alert: dict,
+    token: str,
+    chat_id: str,
+    *,
+    score_threshold: float = 55.0,
+    cooldown_hours: float = 4.0,
+    underlying: str = "",
+    leverage: int = 3,
+    db_url: str = "sqlite:///insider_alert.db",
+) -> bool:
+    """Send a leveraged-ETF alert via Telegram with deduplication."""
+    from insider_alert.persistence.storage import is_alert_duplicate, save_alert
+    from datetime import date
+
+    score = alert.get("score", 0.0)
+    setup_type = alert.get("setup_type", "")
+
+    # Exit warnings always sent (score=0), entries need threshold
+    if setup_type != "exit_warning" and score < score_threshold:
+        return False
+
+    if is_alert_duplicate(ticker, setup_type, cooldown_hours=cooldown_hours, db_url=db_url):
+        logger.info("Skipping duplicate ETF alert: %s / %s", ticker, setup_type)
+        return False
+
+    message = build_etf_alert_message(ticker, alert, underlying, leverage)
+    sent = send_telegram_message(token, chat_id, message)
+    if sent:
+        save_alert(
+            ticker=ticker,
+            date_val=date.today(),
+            score=score,
+            message=message,
+            alert_type="leveraged_etf",
             setup_type=setup_type,
             db_url=db_url,
         )

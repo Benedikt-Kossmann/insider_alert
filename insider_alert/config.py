@@ -12,6 +12,53 @@ logger = logging.getLogger(__name__)
 
 _config_singleton: Optional["Config"] = None
 
+_DEFAULT_LEVERAGED_ETFS: dict = {
+    "enabled": False,
+    "universe": [],
+    "scoring": {
+        "alert_threshold": 55,
+        "weights": {
+            "momentum": 0.25,
+            "mean_reversion_dip": 0.20,
+            "volatility_regime": 0.20,
+            "leverage_health": 0.15,
+            "volume_anomaly": 0.10,
+            "price_anomaly": 0.10,
+        },
+    },
+    "risk": {
+        "max_holding_days_low_vol": 15,
+        "max_holding_days_high_vol": 5,
+        "decay_warning_threshold": 0.02,
+        "max_drawdown_pct": 15.0,
+        "stop_atr_multiplier": 1.5,
+        "rr_ratio": 2.0,
+    },
+    "momentum": {
+        "rsi_period": 14,
+        "rsi_oversold": 30,
+        "rsi_overbought": 70,
+        "macd_fast": 12,
+        "macd_slow": 26,
+        "macd_signal": 9,
+        "ema_fast": 10,
+        "ema_slow": 50,
+        "adx_period": 14,
+        "adx_trend_threshold": 25,
+    },
+    "mean_reversion": {
+        "bollinger_period": 20,
+        "bollinger_std": 2.0,
+        "rsi_bounce_level": 35,
+    },
+    "volatility": {
+        "vix_ticker": "^VIX",
+        "vix_high": 30,
+        "vix_low": 15,
+        "atr_regime_window": 20,
+    },
+}
+
 _DEFAULT_TRADE_ALERTS: dict = {
     "enabled": True,
     "score_threshold": 55,
@@ -57,6 +104,7 @@ class Config:
     telegram_chat_id: str
     alpha_vantage_key: str
     trade_alerts: dict = field(default_factory=lambda: dict(_DEFAULT_TRADE_ALERTS))
+    leveraged_etfs: dict = field(default_factory=lambda: dict(_DEFAULT_LEVERAGED_ETFS))
 
 
 def load_config(path: str = "config.yaml") -> "Config":
@@ -106,6 +154,15 @@ def load_config(path: str = "config.yaml") -> "Config":
         else:
             trade_alerts[key] = value
 
+    # Merge leveraged_etfs from config file on top of defaults
+    leveraged_etfs = dict(_DEFAULT_LEVERAGED_ETFS)
+    raw_le = raw.get("leveraged_etfs", {})
+    for key, value in raw_le.items():
+        if isinstance(value, dict) and isinstance(leveraged_etfs.get(key), dict):
+            leveraged_etfs[key] = {**leveraged_etfs[key], **value}
+        else:
+            leveraged_etfs[key] = value
+
     return Config(
         tickers=tickers,
         alert_threshold=alert_threshold,
@@ -116,6 +173,7 @@ def load_config(path: str = "config.yaml") -> "Config":
         telegram_chat_id=os.getenv("TELEGRAM_CHAT_ID", ""),
         alpha_vantage_key=os.getenv("ALPHA_VANTAGE_API_KEY", ""),
         trade_alerts=trade_alerts,
+        leveraged_etfs=leveraged_etfs,
     )
 
 

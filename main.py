@@ -24,7 +24,9 @@ def cmd_scan(args, config) -> None:
 def cmd_schedule(args, config) -> None:
     """Start the scheduler."""
     from insider_alert.scheduler.jobs import start_scheduler
+    from insider_alert.alert_engine.telegram_alert import send_welcome_message
 
+    send_welcome_message(config)
     logger.info("Starting scheduler...")
     start_scheduler(config, blocking=True)
 
