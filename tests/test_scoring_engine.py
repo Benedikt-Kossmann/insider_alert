@@ -7,12 +7,13 @@ def _make_signals(scores: dict | None = None) -> list[dict]:
         scores = {
             "price_anomaly": 50.0,
             "volume_anomaly": 70.0,
-            "orderflow_anomaly": 30.0,
+            "candle_pattern": 30.0,
             "options_anomaly": 80.0,
             "insider_signal": 60.0,
             "event_leadup": 40.0,
             "news_divergence": 20.0,
             "accumulation_pattern": 55.0,
+            "macro_regime": 65.0,
         }
     return [
         {"signal_type": sig_type, "score": score, "flags": [f"{sig_type} flag"]}
@@ -85,9 +86,9 @@ class TestComputeScore(unittest.TestCase):
         from insider_alert.scoring_engine.scorer import compute_score
         signals = [
             {"signal_type": sig, "score": 150.0, "flags": []}
-            for sig in ["price_anomaly", "volume_anomaly", "orderflow_anomaly",
+            for sig in ["price_anomaly", "volume_anomaly", "candle_pattern",
                         "options_anomaly", "insider_signal", "event_leadup",
-                        "news_divergence", "accumulation_pattern"]
+                        "news_divergence", "accumulation_pattern", "macro_regime"]
         ]
         result = compute_score("AAPL", signals)
         self.assertLessEqual(result.total_score, 100.0)

@@ -90,7 +90,7 @@ def run_trade_alerts_for_ticker(
             logger.error("Trade alert detector failed for %s: %s", ticker, exc, exc_info=True)
 
 
-def run_analysis_for_ticker(ticker: str, config) -> None:
+def run_analysis_for_ticker(ticker: str, config, macro_features: dict | None = None) -> None:
     """Run full analysis pipeline for one ticker."""
     from insider_alert.scheduler.pipeline import (
         _fetch_stock_data, _compute_stock_features,
@@ -98,17 +98,18 @@ def run_analysis_for_ticker(ticker: str, config) -> None:
     )
     from insider_alert.scoring_engine.scorer import compute_score
     from insider_alert.alert_engine.telegram_alert import maybe_send_alert, build_alert_message
-    from insider_alert.persistence.storage import save_alert
+    from insider_alert.persistence.storage import save_alert, save_signal_outcomes
 
     logger.info("Running analysis for %s", ticker)
 
     try:
         data = _fetch_stock_data(ticker)
         features = _compute_stock_features(data)
-        signals = _compute_stock_signals(features)
+        signals = _compute_stock_signals(features, macro_features)
         ticker_score = compute_score(ticker, signals, config.weights)
 
         _persist_signals_and_score(ticker, signals, ticker_score)
+        save_signal_outcomes(ticker, date.today(), signals, ticker_score.total_score)
 
         sent = maybe_send_alert(ticker_score, config.telegram_token, config.telegram_chat_id, config.alert_threshold)
         if sent:
@@ -247,11 +248,55 @@ def run_discovery_scan_job(config) -> None:
         logger.error("Discovery scan failed: %s", exc, exc_info=True)
 
 
+def _fetch_macro_features(config) -> dict | None:
+    """Fetch macro data and compute features. Returns None on failure."""
+    macro_cfg = getattr(config, "macro", None) or {}
+    if not macro_cfg.get("enabled", False):
+        return None
+    try:
+        from insider_alert.data_ingestion.macro_data import fetch_macro_data
+        from insider_alert.feature_engine.macro_features import compute_macro_features
+
+        macro_data = fetch_macro_data(
+            vix_ticker=macro_cfg.get("vix_ticker", ""),
+            tnx_ticker=macro_cfg.get("tnx_ticker", ""),
+            irx_ticker=macro_cfg.get("irx_ticker", ""),
+            dxy_ticker=macro_cfg.get("dxy_ticker", ""),
+        )
+        features = compute_macro_features(macro_data)
+        logger.info(
+            "Macro regime: %s (VIX=%.1f, yield spread=%.2f%%, DXY %s)",
+            features["risk_regime"], features["vix_current"],
+            features["yield_spread"], features["dxy_trend"],
+        )
+        return features
+    except Exception as exc:
+        logger.warning("Macro data fetch failed: %s", exc)
+        return None
+
+
+def _run_outcome_backfill() -> None:
+    """Backfill forward returns for past signal outcomes."""
+    try:
+        from insider_alert.persistence.storage import backfill_signal_outcomes
+        count = backfill_signal_outcomes()
+        if count:
+            logger.info("Backfilled %d signal outcomes", count)
+    except Exception as exc:
+        logger.warning("Outcome backfill failed: %s", exc)
+
+
 def run_eod_job(config) -> None:
     """End-of-day batch: analyze all tickers in config."""
+    # Fetch macro once for all tickers
+    macro_features = _fetch_macro_features(config)
+
+    # Backfill past signal outcomes
+    _run_outcome_backfill()
+
     logger.info("Running EOD job for %d tickers", len(config.tickers))
     for ticker in config.tickers:
-        run_analysis_for_ticker(ticker, config)
+        run_analysis_for_ticker(ticker, config, macro_features)
 
     # Leveraged-ETF analysis
     le_cfg = config.leveraged_etfs
@@ -267,9 +312,11 @@ def run_eod_job(config) -> None:
 
 def run_intraday_job(config) -> None:
     """Intraday job: quick scan."""
+    macro_features = _fetch_macro_features(config)
+
     logger.info("Running intraday job for %d tickers", len(config.tickers))
     for ticker in config.tickers:
-        run_analysis_for_ticker(ticker, config)
+        run_analysis_for_ticker(ticker, config, macro_features)
 
     # Leveraged-ETF analysis
     le_cfg = config.leveraged_etfs

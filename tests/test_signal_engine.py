@@ -141,7 +141,7 @@ class TestOrderflowSignal(_SignalTestMixin, unittest.TestCase):
     def test_structure(self):
         from insider_alert.signal_engine.orderflow_signal import compute_orderflow_anomaly_signal
         result = compute_orderflow_anomaly_signal(_make_orderflow_features())
-        self._assert_signal(result, "orderflow_anomaly")
+        self._assert_signal(result, "candle_pattern")
 
 
 class TestOptionsSignal(_SignalTestMixin, unittest.TestCase):

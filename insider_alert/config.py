@@ -106,6 +106,7 @@ class Config:
     trade_alerts: dict = field(default_factory=lambda: dict(_DEFAULT_TRADE_ALERTS))
     leveraged_etfs: dict = field(default_factory=lambda: dict(_DEFAULT_LEVERAGED_ETFS))
     discovery: dict = field(default_factory=lambda: {"enabled": False})
+    macro: dict = field(default_factory=lambda: {"enabled": True})
 
 
 def load_config(path: str = "config.yaml") -> "Config":
@@ -128,12 +129,13 @@ def load_config(path: str = "config.yaml") -> "Config":
     weights = scoring.get("weights", {
         "price_anomaly": 0.15,
         "volume_anomaly": 0.15,
-        "orderflow_anomaly": 0.10,
+        "candle_pattern": 0.05,
         "options_anomaly": 0.20,
         "insider_signal": 0.20,
         "event_leadup": 0.10,
         "news_divergence": 0.05,
         "accumulation_pattern": 0.05,
+        "macro_regime": 0.05,
     })
     feature_engine = raw.get("feature_engine", {
         "rolling_window": 20,
@@ -167,6 +169,9 @@ def load_config(path: str = "config.yaml") -> "Config":
     # Discovery scanner config
     discovery = raw.get("discovery", {"enabled": False})
 
+    # Macro regime config
+    macro = raw.get("macro", {"enabled": True})
+
     config = Config(
         tickers=tickers,
         alert_threshold=alert_threshold,
@@ -179,6 +184,7 @@ def load_config(path: str = "config.yaml") -> "Config":
         trade_alerts=trade_alerts,
         leveraged_etfs=leveraged_etfs,
         discovery=discovery,
+        macro=macro,
     )
     _validate_config(config)
     return config

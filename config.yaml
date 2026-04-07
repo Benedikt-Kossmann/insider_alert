@@ -50,12 +50,13 @@ scoring:
   weights:
     price_anomaly: 0.15
     volume_anomaly: 0.15
-    orderflow_anomaly: 0.10
+    candle_pattern: 0.05
     options_anomaly: 0.20
     insider_signal: 0.20
     event_leadup: 0.10
     news_divergence: 0.05
     accumulation_pattern: 0.05
+    macro_regime: 0.05
 
 feature_engine:
   rolling_window: 20
@@ -233,3 +234,10 @@ discovery:
   gap_pct_threshold: 3.0
   crypto_move_pct_threshold: 8.0
   max_results: 15
+
+macro:
+  enabled: true
+  vix_ticker: "^VIX"
+  tnx_ticker: "^TNX"
+  irx_ticker: "^IRX"
+  dxy_ticker: "DX-Y.NYB"

@@ -105,8 +105,8 @@ def _nearest_corp_event(corporate_events) -> int | None:
 # Signal computation helpers
 # ---------------------------------------------------------------------------
 
-def _compute_stock_signals(features: dict) -> list[dict]:
-    """Run all 8 stock signal generators."""
+def _compute_stock_signals(features: dict, macro_features: dict | None = None) -> list[dict]:
+    """Run all stock signal generators (8 core + macro if available)."""
     from insider_alert.signal_engine.price_signal import compute_price_anomaly_signal
     from insider_alert.signal_engine.volume_signal import compute_volume_anomaly_signal
     from insider_alert.signal_engine.orderflow_signal import compute_orderflow_anomaly_signal
@@ -116,7 +116,7 @@ def _compute_stock_signals(features: dict) -> list[dict]:
     from insider_alert.signal_engine.news_signal import compute_news_divergence_signal
     from insider_alert.signal_engine.accumulation_signal import compute_accumulation_signal
 
-    return [
+    signals = [
         compute_price_anomaly_signal(features["price"]),
         compute_volume_anomaly_signal(features["volume"]),
         compute_orderflow_anomaly_signal(features["orderflow"]),
@@ -126,6 +126,12 @@ def _compute_stock_signals(features: dict) -> list[dict]:
         compute_news_divergence_signal(features["news"]),
         compute_accumulation_signal(features["accumulation"]),
     ]
+
+    if macro_features is not None:
+        from insider_alert.signal_engine.macro_signal import compute_macro_regime_signal
+        signals.append(compute_macro_regime_signal(macro_features))
+
+    return signals
 
 
 def _compute_etf_features_and_signals(data: dict, le_cfg: dict, leverage: int, direction: str) -> dict:
