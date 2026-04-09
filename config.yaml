@@ -101,87 +101,40 @@ trade_alerts:
 leveraged_etfs:
   enabled: true
   universe:
-    - ticker: TQQQ
-      underlying: QQQ
-      direction: long
-      leverage: 3
-    - ticker: SQQQ
-      underlying: QQQ
-      direction: short
-      leverage: 3
-    - ticker: SOXL
-      underlying: SOXX
-      direction: long
-      leverage: 3
-    - ticker: SOXS
-      underlying: SOXX
-      direction: short
-      leverage: 3
-    - ticker: UPRO
-      underlying: SPY
-      direction: long
-      leverage: 3
-    - ticker: SPXS
-      underlying: SPY
-      direction: short
-      leverage: 3
-    - ticker: TNA
-      underlying: IWM
-      direction: long
-      leverage: 3
-    - ticker: TZA
-      underlying: IWM
-      direction: short
-      leverage: 3
-    - ticker: LABU
-      underlying: XBI
-      direction: long
-      leverage: 3
-    - ticker: FAS
-      underlying: XLF
-      direction: long
-      leverage: 3
-    # --- EU-listed leveraged ETPs (Trade Republic / Xetra / Euronext) ---
-    - ticker: 3LNQ.L
-      underlying: "^NDX"
-      direction: long
-      leverage: 3
-      label: "WisdomTree NASDAQ 100 3x Long"
-    - ticker: 3SQQ.L
-      underlying: "^NDX"
-      direction: short
-      leverage: 3
-      label: "WisdomTree NASDAQ 100 3x Short"
-    - ticker: 3USL.L
-      underlying: "^GSPC"
-      direction: long
-      leverage: 3
-      label: "WisdomTree S&P 500 3x Long"
-    - ticker: 3USS.L
-      underlying: "^GSPC"
-      direction: short
-      leverage: 3
-      label: "WisdomTree S&P 500 3x Short"
-    - ticker: LQQ.PA
-      underlying: "^NDX"
-      direction: long
-      leverage: 2
-      label: "Amundi NASDAQ-100 2x Leveraged"
-    - ticker: CL2.PA
-      underlying: "^GSPC"
-      direction: long
-      leverage: 2
-      label: "Amundi MSCI USA 2x Leveraged"
-    - ticker: DBPG.DE
-      underlying: "^GSPC"
-      direction: long
-      leverage: 2
-      label: "Xtrackers S&P 500 2x Leveraged"
+    # --- DAX ---
     - ticker: LYY7.DE
       underlying: "^GDAXI"
       direction: long
       leverage: 2
       label: "Amundi LevDAX 2x"
+    # --- Rohstoffe: Gold ---
+    - ticker: 3GOL.L
+      underlying: "GC=F"
+      direction: long
+      leverage: 3
+      label: "WisdomTree Gold 3x Daily Long"
+    - ticker: 3GOS.L
+      underlying: "GC=F"
+      direction: short
+      leverage: 3
+      label: "WisdomTree Gold 3x Daily Short"
+    # --- Rohstoffe: Öl ---
+    - ticker: 3OIL.L
+      underlying: "CL=F"
+      direction: long
+      leverage: 3
+      label: "WisdomTree WTI Crude Oil 3x Daily Long"
+    - ticker: 3OIS.L
+      underlying: "CL=F"
+      direction: short
+      leverage: 3
+      label: "WisdomTree WTI Crude Oil 3x Daily Short"
+    # --- Rohstoffe: Silber ---
+    - ticker: 3SIL.L
+      underlying: "SI=F"
+      direction: long
+      leverage: 3
+      label: "WisdomTree Silver 3x Daily Long"
   scoring:
     alert_threshold: 55
     weights:
