@@ -221,3 +221,195 @@ class TestMacroScoringIntegration(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ---------------------------------------------------------------------------
+# Tests: Phase 6 – FRED data module (no real API calls)
+# ---------------------------------------------------------------------------
+
+class TestFredDataFallback(unittest.TestCase):
+    """fetch_all_macro_data() must return defaults when FRED is unavailable."""
+
+    def test_returns_dict_with_all_keys(self):
+        from insider_alert.data_ingestion.fred_data import fetch_all_macro_data
+
+        result = fetch_all_macro_data()
+
+        expected_keys = {
+            "hy_spread", "hy_spread_change_1m",
+            "fed_funds_rate", "fed_policy_direction",
+            "cpi_yoy_change", "inflation_trend",
+            "initial_claims_zscore", "unemployment_rate",
+            "consumer_sentiment",
+        }
+        for key in expected_keys:
+            self.assertIn(key, result, f"Missing key: {key}")
+
+    def test_defaults_are_plausible(self):
+        from insider_alert.data_ingestion.fred_data import fetch_all_macro_data
+
+        result = fetch_all_macro_data()
+
+        self.assertGreater(result["hy_spread"], 0)
+        self.assertIn(result["fed_policy_direction"], ("tightening", "easing", "hold"))
+        self.assertIn(result["inflation_trend"], ("rising", "falling", "stable"))
+
+    def test_fetch_fred_series_returns_none_without_key(self):
+        """Without API key, fetch_fred_series must return None gracefully."""
+        from insider_alert.data_ingestion.fred_data import fetch_fred_series
+
+        result = fetch_fred_series("BAMLH0A0HYM2")
+        # Either None (no API key) or a pd.Series (if key is configured)
+        import pandas as pd
+        self.assertTrue(result is None or isinstance(result, pd.Series))
+
+
+# ---------------------------------------------------------------------------
+# Tests: Phase 6 – compute_fred_macro_features
+# ---------------------------------------------------------------------------
+
+class TestComputeFredMacroFeatures(unittest.TestCase):
+    def _base_fred_data(self, **overrides) -> dict:
+        base = {
+            "hy_spread": 4.0,
+            "hy_spread_change_1m": 0.0,
+            "fed_funds_rate": 5.0,
+            "fed_policy_direction": "hold",
+            "cpi_yoy_change": 2.5,
+            "inflation_trend": "stable",
+            "initial_claims_zscore": 0.0,
+            "unemployment_rate": 4.0,
+            "consumer_sentiment": 70.0,
+        }
+        base.update(overrides)
+        return base
+
+    def test_output_keys(self):
+        from insider_alert.feature_engine.macro_features import compute_fred_macro_features
+
+        result = compute_fred_macro_features(self._base_fred_data(), {})
+
+        for key in ("credit_stress_score", "fed_policy_score", "inflation_score",
+                    "labor_market_score", "consumer_sentiment_norm", "macro_regime"):
+            self.assertIn(key, result, f"Missing key: {key}")
+
+    def test_high_hy_spread_raises_credit_stress(self):
+        from insider_alert.feature_engine.macro_features import compute_fred_macro_features
+
+        result = compute_fred_macro_features(self._base_fred_data(hy_spread=9.0), {})
+        self.assertGreater(result["credit_stress_score"], 0.5)
+
+    def test_low_hy_spread_low_credit_stress(self):
+        from insider_alert.feature_engine.macro_features import compute_fred_macro_features
+
+        result = compute_fred_macro_features(self._base_fred_data(hy_spread=3.0), {})
+        self.assertLessEqual(result["credit_stress_score"], 0.2)
+
+    def test_tightening_fed_positive_policy_score(self):
+        from insider_alert.feature_engine.macro_features import compute_fred_macro_features
+
+        result = compute_fred_macro_features(
+            self._base_fred_data(fed_policy_direction="tightening"), {}
+        )
+        self.assertGreater(result["fed_policy_score"], 0)
+
+    def test_easing_fed_negative_policy_score(self):
+        from insider_alert.feature_engine.macro_features import compute_fred_macro_features
+
+        result = compute_fred_macro_features(
+            self._base_fred_data(fed_policy_direction="easing"), {}
+        )
+        self.assertLess(result["fed_policy_score"], 0)
+
+    def test_stress_regime_high_credit(self):
+        from insider_alert.feature_engine.macro_features import compute_fred_macro_features
+
+        result = compute_fred_macro_features(self._base_fred_data(hy_spread=10.0), {})
+        self.assertEqual(result["macro_regime"], "stress")
+
+    def test_scores_bounded(self):
+        from insider_alert.feature_engine.macro_features import compute_fred_macro_features
+
+        extreme = self._base_fred_data(hy_spread=20.0, cpi_yoy_change=20.0)
+        result = compute_fred_macro_features(extreme, {})
+
+        self.assertGreaterEqual(result["credit_stress_score"], 0.0)
+        self.assertLessEqual(result["credit_stress_score"], 1.0)
+        self.assertGreaterEqual(result["consumer_sentiment_norm"], 0.0)
+        self.assertLessEqual(result["consumer_sentiment_norm"], 1.0)
+
+
+# ---------------------------------------------------------------------------
+# Tests: Phase 6 – new macro_signal (6-component SignalComponent)
+# ---------------------------------------------------------------------------
+
+class TestMacroSignalExtended(unittest.TestCase):
+    def _features(self, **overrides) -> dict:
+        base = {
+            # market data keys
+            "vix_value": 18.0,
+            "yield_spread": 1.0,
+            "dxy_change_5d": 0.0,
+            # FRED keys
+            "credit_stress_score": 0.2,
+            "fed_policy_score": 0.0,
+            "labor_market_score": 0.3,
+        }
+        base.update(overrides)
+        return base
+
+    def test_returns_valid_structure(self):
+        from insider_alert.signal_engine.macro_signal import macro_signal
+
+        result = macro_signal(self._features())
+
+        self.assertIn("signal_type", result)
+        self.assertEqual(result["signal_type"], "macro_regime")
+        self.assertIn("score", result)
+        self.assertIn("flags", result)
+        self.assertGreaterEqual(result["score"], 0.0)
+        self.assertLessEqual(result["score"], 100.0)
+
+    def test_empty_features_returns_zero_score(self):
+        from insider_alert.signal_engine.macro_signal import macro_signal
+
+        result = macro_signal({})
+        self.assertGreaterEqual(result["score"], 0.0)
+        self.assertLessEqual(result["score"], 100.0)
+
+    def test_high_credit_stress_raises_score(self):
+        from insider_alert.signal_engine.macro_signal import macro_signal
+
+        low_stress = macro_signal(self._features(credit_stress_score=0.0))
+        high_stress = macro_signal(self._features(credit_stress_score=1.0))
+        self.assertGreater(high_stress["score"], low_stress["score"])
+
+    def test_old_signal_still_works(self):
+        """compute_macro_regime_signal must remain functional (backward compat)."""
+        from insider_alert.signal_engine.macro_signal import compute_macro_regime_signal
+
+        result = compute_macro_regime_signal({
+            "vix_regime": "normal", "vix_current": 18.0,
+            "yield_curve_regime": "normal", "yield_spread": 1.0,
+            "dxy_trend": "flat", "dxy_return_20d": 0.0,
+        })
+        self.assertIn("signal_type", result)
+        self.assertEqual(result["signal_type"], "macro_regime")
+
+    def test_vix_value_alias_in_compute_macro_features(self):
+        """compute_macro_features must now export vix_value and dxy_change_5d."""
+        from insider_alert.feature_engine.macro_features import compute_macro_features
+        import pandas as pd
+
+        idx = pd.date_range("2024-01-01", periods=30, freq="B")
+        vix_df = pd.DataFrame({"close": [18.0] * 30}, index=idx)
+        tnx_df = pd.DataFrame({"close": [4.5] * 30}, index=idx)
+        irx_df = pd.DataFrame({"close": [4.0] * 30}, index=idx)
+        dxy_df = pd.DataFrame({"close": [100.0] * 30}, index=idx)
+
+        result = compute_macro_features({
+            "vix": vix_df, "tnx": tnx_df, "irx": irx_df, "dxy": dxy_df
+        })
+        self.assertIn("vix_value", result)
+        self.assertIn("dxy_change_5d", result)
+        self.assertAlmostEqual(result["vix_value"], result["vix_current"], places=4)

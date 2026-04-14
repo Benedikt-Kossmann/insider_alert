@@ -3,7 +3,74 @@ import logging
 
 import numpy as np
 
+from insider_alert.signal_engine.base_signal import SignalComponent, compute_signal
+
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Extended macro signal (Phase-6) – uses FRED-derived features
+# ---------------------------------------------------------------------------
+
+_COMPONENTS = [
+    # Existing market-data components (reduced weights)
+    SignalComponent(
+        key="vix_value",
+        max_score=25,
+        normaliser=40.0,
+        flag_template="🌡️ VIX: {value:.1f}",
+        flag_threshold=25.0,
+        offset=-15.0,
+    ),
+    SignalComponent(
+        key="yield_spread",
+        max_score=15,
+        normaliser=3.0,
+        flag_template="📈 Yield Curve: {value:.2f}%",
+        flag_threshold=-0.3,
+        abs_value=True,
+    ),
+    SignalComponent(
+        key="dxy_change_5d",
+        max_score=10,
+        normaliser=3.0,
+        flag_template="💵 DXY 5d: {value:+.1f}%",
+        flag_threshold=1.5,
+        abs_value=True,
+    ),
+    # New FRED-based components
+    SignalComponent(
+        key="credit_stress_score",
+        max_score=25,
+        normaliser=1.0,
+        flag_template="🏦 Credit Stress: {value:.0%}",
+        flag_threshold=0.5,
+    ),
+    SignalComponent(
+        key="fed_policy_score",
+        max_score=15,
+        normaliser=1.0,
+        flag_template="🏛️ Fed Policy: {value:+.1f}",
+        flag_threshold=0.5,
+        abs_value=True,
+    ),
+    SignalComponent(
+        key="labor_market_score",
+        max_score=10,
+        normaliser=1.0,
+        flag_template="👷 Labor Market: {value:+.2f}",
+        flag_threshold=0.5,
+        abs_value=True,
+    ),
+]
+
+
+def macro_signal(features: dict) -> dict:
+    """Extended macro signal (6 components, FRED-aware).
+
+    Returns ``{"signal_type": "macro_regime", "score": 0-100, "flags": [...]}``
+    """
+    return compute_signal("macro_regime", features, _COMPONENTS)
 
 
 def compute_macro_regime_signal(macro_features: dict) -> dict:

@@ -124,4 +124,70 @@ def compute_macro_features(macro_data: dict[str, pd.DataFrame]) -> dict:
     else:
         defaults["risk_regime"] = "neutral"
 
+    # --- Aliases used by the extended macro_signal (SignalComponent keys) ---
+    defaults["vix_value"] = defaults["vix_current"]
+    # dxy_change_5d: convert decimal 20d return to %-points (best proxy available)
+    defaults["dxy_change_5d"] = round(defaults["dxy_return_20d"] * 100.0, 3)
+
     return defaults
+
+
+def compute_fred_macro_features(fred_data: dict, market_data: dict) -> dict:
+    """Derive normalised macro features from FRED data.
+
+    Parameters
+    ----------
+    fred_data : dict
+        Output of :func:`~insider_alert.data_ingestion.fred_data.fetch_all_macro_data`.
+    market_data : dict
+        Existing macro features dict (output of :func:`compute_macro_features`).
+        Used only for context; not mutated.
+
+    Returns
+    -------
+    dict
+        Normalised FRED-derived features ready to merge into the macro context.
+    """
+    features: dict = {}
+
+    # --- Credit Stress Score (0 = calm, 1 = extreme stress) ---
+    hy_spread = float(fred_data.get("hy_spread", 4.0))
+    hy_change = float(fred_data.get("hy_spread_change_1m", 0.0))
+    # Normal: 3-4 %, elevated: >5 %, crisis: >8 %
+    credit_stress = float(np.clip((hy_spread - 3.0) / 5.0, 0.0, 1.0))
+    if hy_change > 0.5:
+        credit_stress = min(1.0, credit_stress + 0.2)
+    features["credit_stress_score"] = round(credit_stress, 3)
+
+    # --- Fed Policy Score (0 = neutral, +1 = hawkish, -1 = dovish) ---
+    direction = fred_data.get("fed_policy_direction", "hold")
+    if direction == "tightening":
+        features["fed_policy_score"] = 0.7
+    elif direction == "easing":
+        features["fed_policy_score"] = -0.7
+    else:
+        features["fed_policy_score"] = 0.0
+
+    # --- Inflation Score ---
+    cpi_yoy = float(fred_data.get("cpi_yoy_change", 2.0))
+    # Target band 2-3 %. Below 1 % = deflation risk, above 5 % = problematic.
+    features["inflation_score"] = round(float(np.clip((cpi_yoy - 2.0) / 4.0, -1.0, 1.0)), 3)
+
+    # --- Labor Market Score (-1 = weak, +1 = strong) ---
+    claims_z = float(fred_data.get("initial_claims_zscore", 0.0))
+    # Negative Z-score = fewer claims = strong labor market
+    features["labor_market_score"] = round(float(np.clip(-claims_z * 0.5, -1.0, 1.0)), 3)
+
+    # --- Consumer Sentiment (normalised 0-1) ---
+    sentiment = float(fred_data.get("consumer_sentiment", 70.0))
+    features["consumer_sentiment_norm"] = round(float(np.clip((sentiment - 50.0) / 50.0, 0.0, 1.0)), 3)
+
+    # --- Macro Regime (qualitative) ---
+    if credit_stress > 0.6 or cpi_yoy > 6.0:
+        features["macro_regime"] = "stress"
+    elif credit_stress < 0.2 and features["labor_market_score"] > 0.3:
+        features["macro_regime"] = "expansion"
+    else:
+        features["macro_regime"] = "neutral"
+
+    return features

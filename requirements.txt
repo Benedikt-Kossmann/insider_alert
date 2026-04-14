@@ -11,3 +11,4 @@ scikit-learn>=1.3.0
 arch>=6.0
 transformers>=4.35
 torch>=2.1
+fredapi>=0.5

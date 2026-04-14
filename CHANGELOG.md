@@ -11,6 +11,31 @@ Legend:
 
 ---
 
+## Phase 6 — Erweiterte Makro-Daten (FRED API) (2026-04-14)
+
+### Added
+- `insider_alert/data_ingestion/fred_data.py` — FRED API client (`fetch_fred_series()`) + `fetch_all_macro_data()` returning 9 pre-processed macro features (HY spread, Fed funds, CPI, initial claims, unemployment, consumer sentiment). Gracefully falls back to sane defaults when no API key is configured.
+- `insider_alert/feature_engine/macro_features.py` → `compute_fred_macro_features(fred_data, market_data)` — derives `credit_stress_score`, `fed_policy_score`, `inflation_score`, `labor_market_score`, `consumer_sentiment_norm`, `macro_regime`
+
+### Changed
+- `insider_alert/feature_engine/macro_features.py` → `compute_macro_features()` now also emits `vix_value` (alias for `vix_current`) and `dxy_change_5d` (20d % return ×100) for use by the new signal.
+- `insider_alert/signal_engine/macro_signal.py` — new `macro_signal(features)` function using `SignalComponent` pattern with 6 components (100 pts total: VIX 25, Yield 15, DXY 10, Credit Stress 25, Fed Policy 15, Labor Market 10). Old `compute_macro_regime_signal()` kept for backward compatibility.
+- `insider_alert/scheduler/pipeline.py`:
+  - `build_market_context()`: after fetching VIX/yield/DXY macro, enriches `ctx["macro"]` with FRED features via `fetch_all_macro_data()` + `compute_fred_macro_features()`
+  - `_compute_stock_signals()`: uses new `macro_signal` instead of `compute_macro_regime_signal`
+  - `_compute_etf_features_and_signals()`: same switch to `macro_signal`
+- `insider_alert/config.py` — `Config` dataclass gains `fred_api_key: str = ""`; `load_config()` reads from `config.yaml` key `fred_api_key` with `FRED_API_KEY` env-var fallback
+- `config.yaml` — new `fred_api_key: ""` key under FRED API section
+- `requirements.txt` + `pyproject.toml` — `fredapi>=0.5` added
+
+### Migration
+- 📦 **Deps**: `pip install fredapi>=0.5`
+- ⚙️ **Config**: Add `fred_api_key: "YOUR_KEY"` to `config.yaml` **or** `FRED_API_KEY=YOUR_KEY` to `.env`. Free key at https://fred.stlouisfed.org/docs/api/api_key.html  
+  Without a key the system operates normally using yfinance-based macro features and default FRED fallback values.
+- 🔄 **Restart**: `sudo systemctl restart insider-alert`
+
+---
+
 ## Phase 5 — Cross-Asset Correlation & Sector Rotation (2026-04-14)
 
 ### Added

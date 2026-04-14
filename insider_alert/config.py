@@ -122,6 +122,7 @@ class Config:
     macro: dict = field(default_factory=lambda: {"enabled": True})
     finbert: dict = field(default_factory=lambda: dict(_DEFAULT_FINBERT))
     garch: dict = field(default_factory=lambda: dict(_DEFAULT_GARCH))
+    fred_api_key: str = ""
 
 
 def load_config(path: str = "config.yaml") -> "Config":
@@ -208,6 +209,7 @@ def load_config(path: str = "config.yaml") -> "Config":
         macro=macro,
         finbert=finbert,
         garch=garch,
+        fred_api_key=raw.get("fred_api_key", "") or os.getenv("FRED_API_KEY", ""),
     )
     _validate_config(config)
     return config

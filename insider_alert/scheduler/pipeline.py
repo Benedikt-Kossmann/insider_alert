@@ -184,6 +184,21 @@ def build_market_context(config) -> dict:
                 mf["risk_regime"], mf["vix_current"],
                 mf["yield_spread"], mf["dxy_trend"],
             )
+            # --- Enrich with FRED macro data (Phase 6) ---
+            try:
+                from insider_alert.data_ingestion.fred_data import fetch_all_macro_data
+                from insider_alert.feature_engine.macro_features import compute_fred_macro_features
+                fred_data = fetch_all_macro_data()
+                fred_features = compute_fred_macro_features(fred_data, mf)
+                ctx["macro"].update(fred_features)
+                logger.info(
+                    "FRED macro: credit_stress=%.2f, fed=%s, inflation=%s",
+                    fred_features.get("credit_stress_score", 0.0),
+                    fred_features.get("fed_policy_direction", "?"),
+                    fred_features.get("macro_regime", "?"),
+                )
+            except Exception as fred_exc:
+                logger.warning("FRED macro enrichment failed: %s", fred_exc)
         except Exception as exc:
             logger.warning("Macro data fetch failed: %s", exc)
 
@@ -273,8 +288,8 @@ def _compute_stock_signals(features: dict, macro_features: dict | None = None, m
     ]
 
     if macro_features is not None:
-        from insider_alert.signal_engine.macro_signal import compute_macro_regime_signal
-        signals.append(compute_macro_regime_signal(macro_features))
+        from insider_alert.signal_engine.macro_signal import macro_signal
+        signals.append(macro_signal(macro_features))
 
     return signals
 
@@ -326,8 +341,8 @@ def _compute_etf_features_and_signals(
     if market_ctx:
         macro_f = market_ctx.get("macro")
         if macro_f:
-            from insider_alert.signal_engine.macro_signal import compute_macro_regime_signal
-            signals.append(compute_macro_regime_signal(macro_f))
+            from insider_alert.signal_engine.macro_signal import macro_signal
+            signals.append(macro_signal(macro_f))
 
         news_f = market_ctx.get("news", {}).get(news_proxy) if news_proxy else None
         if news_f:
