@@ -19,10 +19,11 @@ echo "[1/4] Pulling latest code..."
 git pull --ff-only
 echo ""
 
-# 2. Check if requirements changed → install deps
+# 2. Check if requirements changed since last deployed commit → install deps
 echo "[2/4] Checking dependencies..."
-if git diff HEAD~1 --name-only 2>/dev/null | grep -qE 'requirements\.txt'; then
-    echo "  → requirements.txt changed, installing dependencies..."
+PREV_HEAD=$(git rev-parse HEAD@{1} 2>/dev/null || echo "")
+if [ -z "$PREV_HEAD" ] || git diff "$PREV_HEAD" HEAD --name-only 2>/dev/null | grep -qE 'requirements\.txt'; then
+    echo "  → requirements.txt changed (or first deploy), installing dependencies..."
     "$VENV/bin/pip" install -r requirements.txt --quiet
     echo "  → Done."
 else
