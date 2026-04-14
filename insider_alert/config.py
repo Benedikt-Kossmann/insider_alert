@@ -100,6 +100,11 @@ _DEFAULT_FINBERT: dict = {
     "model": "ProsusAI/finbert",
 }
 
+_DEFAULT_GARCH: dict = {
+    "min_observations": 252,
+    "refit_interval_days": 7,
+}
+
 
 @dataclass
 class Config:
@@ -116,6 +121,7 @@ class Config:
     discovery: dict = field(default_factory=lambda: {"enabled": False})
     macro: dict = field(default_factory=lambda: {"enabled": True})
     finbert: dict = field(default_factory=lambda: dict(_DEFAULT_FINBERT))
+    garch: dict = field(default_factory=lambda: dict(_DEFAULT_GARCH))
 
 
 def load_config(path: str = "config.yaml") -> "Config":
@@ -184,6 +190,9 @@ def load_config(path: str = "config.yaml") -> "Config":
     # FinBERT config
     finbert = {**_DEFAULT_FINBERT, **raw.get("finbert", {})}
 
+    # GARCH config
+    garch = {**_DEFAULT_GARCH, **raw.get("garch", {})}
+
     config = Config(
         tickers=tickers,
         alert_threshold=alert_threshold,
@@ -198,6 +207,7 @@ def load_config(path: str = "config.yaml") -> "Config":
         discovery=discovery,
         macro=macro,
         finbert=finbert,
+        garch=garch,
     )
     _validate_config(config)
     return config

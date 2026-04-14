@@ -32,6 +32,7 @@ def _fetch_stock_data(ticker: str) -> dict:
         "news": fetch_news(ticker),
         "sector_ohlcv": fetch_ohlcv_daily(sector_etf),
         "sector_etf": sector_etf,
+        "ticker": ticker,
     }
 
 
@@ -63,6 +64,7 @@ def _compute_stock_features(data: dict, risk_free_rate: float = 0.05) -> dict:
     from insider_alert.feature_engine.candlestick_features import detect_candlestick_patterns
     from insider_alert.feature_engine.sr_features import compute_support_resistance
     from insider_alert.feature_engine.sector_features import compute_relative_strength, get_sector_label
+    from insider_alert.feature_engine.volatility_forecast import compute_volatility_forecast
 
     ohlcv = data["ohlcv"]
     current_price = float(ohlcv["close"].iloc[-1]) if not ohlcv.empty and "close" in ohlcv.columns else 100.0
@@ -95,6 +97,9 @@ def _compute_stock_features(data: dict, risk_free_rate: float = 0.05) -> dict:
     sector_f["sector_etf"] = data.get("sector_etf", "SPY")
     sector_f["sector_label"] = get_sector_label(data.get("sector_etf", "SPY"))
 
+    ticker = data.get("ticker", "")
+    vol_forecast_f = compute_volatility_forecast(ohlcv, ticker=ticker)
+
     return {
         "price": price_f,
         "volume": volume_f,
@@ -106,6 +111,7 @@ def _compute_stock_features(data: dict, risk_free_rate: float = 0.05) -> dict:
         "accumulation": accumulation_f,
         "sr": sr_f,
         "sector": sector_f,
+        "vol_forecast": vol_forecast_f,
     }
 
 
@@ -235,6 +241,8 @@ def _compute_stock_signals(features: dict, macro_features: dict | None = None) -
     from insider_alert.signal_engine.news_signal import compute_news_divergence_signal
     from insider_alert.signal_engine.accumulation_signal import compute_accumulation_signal
 
+    from insider_alert.signal_engine.volatility_forecast_signal import compute_volatility_forecast_signal
+
     signals = [
         compute_price_anomaly_signal(features["price"]),
         compute_volume_anomaly_signal(features["volume"]),
@@ -244,6 +252,7 @@ def _compute_stock_signals(features: dict, macro_features: dict | None = None) -
         compute_event_leadup_signal(features["event"]),
         compute_news_divergence_signal(features["news"]),
         compute_accumulation_signal(features["accumulation"]),
+        compute_volatility_forecast_signal(features.get("vol_forecast", {})),
     ]
 
     if macro_features is not None:

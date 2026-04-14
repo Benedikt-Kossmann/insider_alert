@@ -9,13 +9,14 @@ logger = logging.getLogger(__name__)
 DEFAULT_WEIGHTS = {
     "price_anomaly": 0.15,
     "volume_anomaly": 0.15,
-    "candle_pattern": 0.05,
+    "candle_pattern": 0.04,
     "options_anomaly": 0.20,
     "insider_signal": 0.20,
     "event_leadup": 0.10,
-    "news_divergence": 0.05,
-    "accumulation_pattern": 0.05,
-    "macro_regime": 0.05,
+    "news_divergence": 0.04,
+    "accumulation_pattern": 0.02,
+    "macro_regime": 0.02,
+    "volatility_forecast": 0.08,
 }
 
 DEFAULT_ETF_WEIGHTS = {

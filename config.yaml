@@ -38,6 +38,14 @@ feature_engine:
   rvol_window: 20
 
 # =============================================================================
+# GARCH Volatility Forecasting
+# =============================================================================
+
+garch:
+  min_observations: 252        # minimum daily returns for GARCH fit
+  refit_interval_days: 7       # re-fit only every N days (performance)
+
+# =============================================================================
 # Scoring (Aktien)
 # =============================================================================
 
@@ -49,10 +57,11 @@ scoring:
     price_anomaly: 0.15
     volume_anomaly: 0.15
     event_leadup: 0.10
-    news_divergence: 0.05
-    candle_pattern: 0.05
-    accumulation_pattern: 0.05
-    macro_regime: 0.05
+    volatility_forecast: 0.08
+    news_divergence: 0.04
+    candle_pattern: 0.04
+    accumulation_pattern: 0.02
+    macro_regime: 0.02
 
 # =============================================================================
 # Aktien-Watchlist

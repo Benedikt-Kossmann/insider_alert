@@ -11,6 +11,26 @@ Legend:
 
 ---
 
+## Phase 4 — GARCH Volatility Forecasting (2026-04-14)
+
+### Added
+- `insider_alert/feature_engine/volatility_forecast.py` — GARCH(1,1) via `arch` library; `compute_volatility_forecast(ohlcv, ticker)` with module-level per-ticker cache (refit every 7 days or on >5% daily return shock); graceful fallback when `arch` not installed
+- 6 new feature keys: `garch_forecast_1d/5d/10d` (annualised), `vol_surprise_ratio`, `vol_regime_forecast` ("expanding"|"contracting"|"stable"), `vol_of_vol`
+- `insider_alert/signal_engine/volatility_forecast_signal.py` — `compute_volatility_forecast_signal()` using 3 Greek-like components (`vol_surprise_ratio` 40pts, `vol_of_vol` 30pts, `garch_forecast_1d` 30pts)
+- `garch:` config block in `config.yaml` (`min_observations: 252`, `refit_interval_days: 7`)
+- `Config.garch` field + `_DEFAULT_GARCH` defaults in `config.py`
+
+### Changed
+- `scheduler/pipeline.py` — `_fetch_stock_data()` adds `ticker` key to returned dict; `_compute_stock_features()` computes `vol_forecast` sub-dict via `compute_volatility_forecast`; `_compute_stock_signals()` appends `compute_volatility_forecast_signal`
+- `scoring_engine/scorer.py` — `DEFAULT_WEIGHTS` updated: `volatility_forecast: 0.08` added; `candle_pattern`, `news_divergence`, `accumulation_pattern`, `macro_regime` reduced to keep sum = 1.00
+- `config.yaml` scoring weights updated to match new `DEFAULT_WEIGHTS`
+
+### Migration Notes
+- 📦 **Deps**: `pip install -r requirements.txt` (added: `arch>=6.0`)
+- 🔄 **Restart**: Service restart required
+
+---
+
 ## Phase 3 — Options Greeks (2026-04-14)
 
 ### Added
