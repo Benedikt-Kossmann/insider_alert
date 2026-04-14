@@ -96,6 +96,7 @@ def compute_news_features(news_df: pd.DataFrame, return_1d: float) -> dict:
     defaults = {
         "news_count_24h": 0,
         "news_sentiment_score": 0.0,
+        "news_confidence": 0.0,
         "public_catalyst_strength": 0.0,
         "price_news_divergence_score": 0.0,
     }
@@ -129,13 +130,29 @@ def compute_news_features(news_df: pd.DataFrame, return_1d: float) -> dict:
     news_count_24h = len(news_24h)
 
     news_sentiment_score = 0.0
+    confidences: list[float] = []
     if news_count_24h > 0:
         try:
-            polarities = [_financial_sentiment(t) for t in news_24h if t]
-            if polarities:
-                news_sentiment_score = float(np.mean(polarities))
-        except Exception as exc:
-            logger.warning("Sentiment computation failed: %s", exc)
+            from insider_alert.nlp.finbert_sentiment import analyze_batch, is_available
+            if is_available():
+                fin_results = analyze_batch([t for t in news_24h if t])
+                sentiments = [r["sentiment"] for r in fin_results]
+                confidences = [r["confidence"] for r in fin_results]
+                if sentiments:
+                    weights = np.array(confidences)
+                    if weights.sum() > 0:
+                        news_sentiment_score = float(np.average(sentiments, weights=weights))
+                    else:
+                        news_sentiment_score = float(np.mean(sentiments))
+            else:
+                raise ImportError("FinBERT not available")
+        except (ImportError, Exception):
+            try:
+                polarities = [_financial_sentiment(t) for t in news_24h if t]
+                if polarities:
+                    news_sentiment_score = float(np.mean(polarities))
+            except Exception as exc:
+                logger.warning("Sentiment computation failed: %s", exc)
 
     public_catalyst_strength = float(np.clip(news_count_24h / 5.0, 0.0, 1.0))
 
@@ -147,6 +164,7 @@ def compute_news_features(news_df: pd.DataFrame, return_1d: float) -> dict:
     return {
         "news_count_24h": news_count_24h,
         "news_sentiment_score": news_sentiment_score,
+        "news_confidence": float(np.mean(confidences)) if confidences else 0.0,
         "public_catalyst_strength": public_catalyst_strength,
         "price_news_divergence_score": price_news_divergence_score,
     }

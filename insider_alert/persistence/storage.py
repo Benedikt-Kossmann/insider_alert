@@ -67,6 +67,19 @@ class SignalOutcome(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
+class SentimentCache(Base):
+    """Persistent cache for FinBERT (or lexicon) sentiment results."""
+    __tablename__ = "sentiment_cache"
+    id = Column(Integer, primary_key=True)
+    headline_hash = Column(String(16), unique=True, index=True, nullable=False)
+    headline_text = Column(String(500), nullable=False)
+    sentiment = Column(Float, nullable=False)
+    confidence = Column(Float, nullable=False)
+    label = Column(String(16), nullable=False)
+    model_version = Column(String(32), default="finbert-v1")
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
 def _get_engine(db_url: str):
     if db_url not in _engines:
         _engines[db_url] = create_engine(db_url, echo=False)
@@ -78,6 +91,44 @@ def init_db(db_url: str = "sqlite:///insider_alert.db") -> None:
     engine = _get_engine(db_url)
     Base.metadata.create_all(engine)
     logger.info("Database initialized at %s", db_url)
+
+
+def get_cached_sentiment(
+    headline_hash: str,
+    db_url: str = "sqlite:///insider_alert.db",
+) -> dict | None:
+    """Return cached sentiment result for a headline hash, or None if not found."""
+    engine = _get_engine(db_url)
+    Session = sessionmaker(bind=engine)
+    with Session() as session:
+        row = session.query(SentimentCache).filter_by(headline_hash=headline_hash).first()
+        if row:
+            return {"sentiment": row.sentiment, "confidence": row.confidence, "label": row.label}
+    return None
+
+
+def save_sentiment_cache(
+    headline_hash: str,
+    headline_text: str,
+    sentiment: float,
+    confidence: float,
+    label: str,
+    db_url: str = "sqlite:///insider_alert.db",
+) -> None:
+    """Persist a sentiment result.  Silently skips if the hash already exists."""
+    engine = _get_engine(db_url)
+    Session = sessionmaker(bind=engine)
+    with Session() as session:
+        existing = session.query(SentimentCache).filter_by(headline_hash=headline_hash).first()
+        if not existing:
+            session.add(SentimentCache(
+                headline_hash=headline_hash,
+                headline_text=headline_text[:500],
+                sentiment=sentiment,
+                confidence=confidence,
+                label=label,
+            ))
+            session.commit()
 
 
 def save_signal(

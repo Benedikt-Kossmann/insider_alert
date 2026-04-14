@@ -18,6 +18,7 @@ def compute_news_divergence_signal(features: dict) -> dict:
     divergence = features.get("price_news_divergence_score", 0.0)
     sentiment = features.get("news_sentiment_score", 0.0)
     news_count = features.get("news_count_24h", 0)
+    confidence = features.get("news_confidence", 0.5)
 
     divergence_component = min(divergence / _DIVERGENCE_NORMALISER, 1.0) * _DIVERGENCE_MAX_SCORE
     if news_count > 0:
@@ -30,7 +31,11 @@ def compute_news_divergence_signal(features: dict) -> dict:
     if sentiment_conflict > _SENTIMENT_MAX_SCORE / 2 and news_count > 0:
         flags.append(f"Weak/neutral news sentiment during price move: {sentiment:.2f}")
 
-    score = float(np.clip(divergence_component + sentiment_conflict, 0.0, 100.0))
+    raw_score = float(np.clip(divergence_component + sentiment_conflict, 0.0, 100.0))
+
+    # Scale by FinBERT confidence: full weight only when model is certain
+    confidence_multiplier = 0.5 + 0.5 * confidence   # range [0.5, 1.0]
+    score = float(np.clip(raw_score * confidence_multiplier, 0.0, 100.0))
 
     return {
         "signal_type": "news_divergence",

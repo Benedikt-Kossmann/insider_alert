@@ -93,6 +93,14 @@ _DEFAULT_TRADE_ALERTS: dict = {
 }
 
 
+_DEFAULT_FINBERT: dict = {
+    "enabled": True,
+    "cache_db": True,
+    "batch_size": 16,
+    "model": "ProsusAI/finbert",
+}
+
+
 @dataclass
 class Config:
     tickers: list[str]
@@ -107,6 +115,7 @@ class Config:
     leveraged_etfs: dict = field(default_factory=lambda: dict(_DEFAULT_LEVERAGED_ETFS))
     discovery: dict = field(default_factory=lambda: {"enabled": False})
     macro: dict = field(default_factory=lambda: {"enabled": True})
+    finbert: dict = field(default_factory=lambda: dict(_DEFAULT_FINBERT))
 
 
 def load_config(path: str = "config.yaml") -> "Config":
@@ -172,6 +181,9 @@ def load_config(path: str = "config.yaml") -> "Config":
     # Macro regime config
     macro = raw.get("macro", {"enabled": True})
 
+    # FinBERT config
+    finbert = {**_DEFAULT_FINBERT, **raw.get("finbert", {})}
+
     config = Config(
         tickers=tickers,
         alert_threshold=alert_threshold,
@@ -185,6 +197,7 @@ def load_config(path: str = "config.yaml") -> "Config":
         leveraged_etfs=leveraged_etfs,
         discovery=discovery,
         macro=macro,
+        finbert=finbert,
     )
     _validate_config(config)
     return config

@@ -8,6 +8,16 @@ scheduler:
   intraday_interval_minutes: 60
 
 # =============================================================================
+# FinBERT Sentiment
+# =============================================================================
+
+finbert:
+  enabled: true          # false = always use lexicon fallback
+  cache_db: true         # persist results in SQLite sentiment_cache table
+  batch_size: 16         # FinBERT inference batch size
+  model: "ProsusAI/finbert"
+
+# =============================================================================
 # Marktdaten & Makro
 # =============================================================================
 
