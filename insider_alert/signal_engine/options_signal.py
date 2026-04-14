@@ -1,26 +1,44 @@
-"""Options anomaly signal computation."""
+"""Options flow signal based on real Black-Scholes Greeks."""
 from insider_alert.signal_engine.base_signal import SignalComponent, compute_signal
 
 _COMPONENTS = [
     SignalComponent(
-        key="call_volume_zscore", max_score=25, normaliser=3.0,
-        flag_template="Elevated call volume z-score: {value:.2f}",
+        key="net_delta_exposure",
+        max_score=30,
+        normaliser=2.0,      # range approx [-2, 2] → [0, 1] after abs clipping
+        flag_template="🔵 Net Delta Flow: {value:.2f}",
+        flag_threshold=0.3,
     ),
     SignalComponent(
-        key="short_dated_otm_call_score", max_score=25, normaliser=1.0,
-        flag_template="Short-dated OTM call activity: {value:.2f}",
+        key="gamma_imbalance",
+        max_score=25,
+        normaliser=1.0,
+        flag_template="⚡ Gamma Imbalance: {value:.2f}",
+        flag_threshold=0.3,
+        abs_value=True,
     ),
     SignalComponent(
-        key="block_trade_score", max_score=25, normaliser=1.0,
-        flag_template="Block trades detected: {value:.2f}",
+        key="iv_skew_25d",
+        max_score=25,
+        normaliser=1.0,
+        flag_template="📊 IV Skew (25Δ): {value:.2f}",
+        flag_threshold=0.2,
+        abs_value=True,
     ),
     SignalComponent(
-        key="sweep_order_score", max_score=25, normaliser=1.0,
-        flag_template="Sweep orders detected: {value:.2f}",
+        key="iv_term_structure",
+        max_score=20,
+        normaliser=1.0,
+        flag_template="📅 IV Term Structure: {value:.2f}",
+        flag_threshold=0.15,
+        abs_value=True,
     ),
 ]
 
 
 def compute_options_anomaly_signal(features: dict) -> dict:
-    """Compute options anomaly signal from options features."""
+    """Compute options flow signal from Greek-based features.
+
+    Returns ``{"signal_type": "options_anomaly", "score": 0-100, "flags": [...]}``.
+    """
     return compute_signal("options_anomaly", features, _COMPONENTS)

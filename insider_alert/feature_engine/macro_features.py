@@ -63,6 +63,8 @@ def compute_macro_features(macro_data: dict[str, pd.DataFrame]) -> dict:
         irx_last = float(irx_df["close"].dropna().iloc[-1]) if len(irx_df) else 0.0
         spread = tnx_last - irx_last
         defaults["yield_spread"] = round(spread, 3)
+        # Expose IRX as a decimal risk-free rate for Black-Scholes Greeks (^IRX is in %)
+        defaults["irx_rate"] = round(irx_last / 100.0, 6)
 
         if spread < -0.5:
             defaults["yield_curve_regime"] = "inverted"

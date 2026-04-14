@@ -11,6 +11,31 @@ Legend:
 
 ---
 
+## Phase 3 — Options Greeks (2026-04-14)
+
+### Added
+- `insider_alert/feature_engine/greeks.py` — Black-Scholes Greeks via `scipy.stats.norm`; `compute_greeks()` + `compute_chain_greeks()`; graceful fallback when scipy unavailable
+- 5 new Greek-based feature keys in `compute_options_features()`:
+  - `net_delta_exposure` — delta-weighted aggregate flow (positive = bullish)
+  - `gamma_imbalance` — call vs put gamma balance
+  - `put_call_delta_ratio` — direction-aware put/call ratio
+  - `iv_skew_25d` — 25-delta put IV vs call IV skew
+  - `iv_term_structure` — front-month vs back-month IV ratio
+
+### Changed
+- `feature_engine/options_features.py` — new `risk_free_rate` parameter (default 0.05); Greek features merged into the return dict; helper functions `compute_greeks_features()`, `_compute_iv_skew()`, `_compute_iv_term_structure()` added
+- `signal_engine/options_signal.py` — completely replaced volume-proxy components with 4 Greek-based `SignalComponent`s (`net_delta_exposure`, `gamma_imbalance`, `iv_skew_25d`, `iv_term_structure`)
+- `feature_engine/macro_features.py` — `irx_rate` (decimal, e.g. 0.045) now included in the `compute_macro_features()` return dict
+- `scheduler/pipeline.py` — `build_market_context()` stores `irx_rate` in context dict; proxy options fetch passes real risk-free rate; `_compute_stock_features()` accepts `risk_free_rate` parameter
+- `scheduler/jobs.py` — `run_analysis_for_ticker()` extracts `irx_rate` from `macro_features` and forwards to `_compute_stock_features()`
+
+### Migration Notes
+- 🔄 **Restart**: Service restart required
+- 📦 **Deps**: `scipy` must be installed on server (`pip install scipy` — usually already present)
+  - If not: `pip install -r requirements.txt`
+
+---
+
 ## Phase 2 — FinBERT Sentiment (2026-04-14)
 
 ### Added

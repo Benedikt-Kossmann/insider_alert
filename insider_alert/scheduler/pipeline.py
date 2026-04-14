@@ -50,7 +50,7 @@ def _fetch_etf_data(ticker: str, underlying: str, vix_ticker: str) -> dict:
 # Feature computation helpers
 # ---------------------------------------------------------------------------
 
-def _compute_stock_features(data: dict) -> dict:
+def _compute_stock_features(data: dict, risk_free_rate: float = 0.05) -> dict:
     """Compute all stock features from raw data. Returns keyed dict."""
     from insider_alert.feature_engine.price_features import compute_price_features
     from insider_alert.feature_engine.volume_features import compute_volume_features
@@ -74,7 +74,11 @@ def _compute_stock_features(data: dict) -> dict:
     # Merge candlestick pattern features into orderflow dict
     candle_patterns = detect_candlestick_patterns(ohlcv)
     orderflow_f.update(candle_patterns)
-    options_f = compute_options_features(data["options"], current_price, iv_baseline=data["iv_baseline"])
+    options_f = compute_options_features(
+        data["options"], current_price,
+        iv_baseline=data["iv_baseline"],
+        risk_free_rate=risk_free_rate,
+    )
     insider_f = compute_insider_features(data["insider_txns"])
 
     # Nearest corporate event
@@ -149,7 +153,7 @@ def build_market_context(config) -> dict:
     from insider_alert.feature_engine.options_features import compute_options_features
     from insider_alert.data_ingestion.market_data import fetch_ohlcv_daily
 
-    ctx: dict = {"macro": None, "news": {}, "options": {}}
+    ctx: dict = {"macro": None, "news": {}, "options": {}, "irx_rate": 0.05}
 
     # --- Macro (once) ---
     macro_cfg = getattr(config, "macro", None) or {}
@@ -163,6 +167,7 @@ def build_market_context(config) -> dict:
             )
             ctx["macro"] = compute_macro_features(macro_data)
             mf = ctx["macro"]
+            ctx["irx_rate"] = mf.get("irx_rate", 0.05)
             logger.info(
                 "Macro regime: %s (VIX=%.1f, yield spread=%.2f%%, DXY %s)",
                 mf["risk_regime"], mf["vix_current"],
@@ -204,7 +209,10 @@ def build_market_context(config) -> dict:
                 current_price = 0.0
                 if not ohlcv.empty and "close" in ohlcv.columns:
                     current_price = float(ohlcv["close"].iloc[-1])
-                ctx["options"][proxy] = compute_options_features(opts_df, current_price, iv_baseline)
+                ctx["options"][proxy] = compute_options_features(
+                    opts_df, current_price, iv_baseline,
+                    risk_free_rate=ctx.get("irx_rate", 0.05),
+                )
                 logger.info("Options features for proxy %s loaded", proxy)
         except Exception as exc:
             logger.warning("Options fetch failed for proxy %s: %s", proxy, exc)

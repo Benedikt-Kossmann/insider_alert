@@ -17,6 +17,7 @@ def compute_options_features(
     options_df: pd.DataFrame,
     current_price: float,
     iv_baseline: float = 0.0,
+    risk_free_rate: float = 0.05,
 ) -> dict:
     """Compute options-based features.
 
@@ -126,7 +127,7 @@ def compute_options_features(
     else:
         open_interest_change = 0.0
 
-    return {
+    result = {
         "call_volume_zscore": call_volume_zscore,
         "put_volume_zscore": put_volume_zscore,
         "put_call_ratio_change": put_call_ratio_change,
@@ -136,3 +137,123 @@ def compute_options_features(
         "sweep_order_score": float(np.clip(sweep_order_score, 0.0, 1.0)),
         "open_interest_change": open_interest_change,
     }
+    greeks_feats = compute_greeks_features(df, current_price, risk_free_rate)
+    result.update(greeks_feats)
+    return result
+
+
+def compute_greeks_features(
+    options_df: pd.DataFrame,
+    current_price: float,
+    risk_free_rate: float = 0.05,
+) -> dict:
+    """Compute Greek-based options flow features.
+
+    Returns
+    -------
+    dict
+        net_delta_exposure : aggregated delta-weighted flow (positive = bullish)
+        gamma_imbalance    : dealer gamma balance (positive = call-heavy)
+        put_call_delta_ratio: direction-aware put/call ratio
+        iv_skew_25d        : 25-delta put IV vs call IV skew
+        iv_term_structure  : front-month IV vs back-month IV
+    """
+    defaults = {
+        "net_delta_exposure": 0.0,
+        "gamma_imbalance": 0.0,
+        "put_call_delta_ratio": 0.0,
+        "iv_skew_25d": 0.0,
+        "iv_term_structure": 0.0,
+    }
+
+    if options_df is None or options_df.empty:
+        return defaults
+
+    from insider_alert.feature_engine.greeks import compute_chain_greeks
+
+    try:
+        chain = compute_chain_greeks(options_df, current_price, risk_free_rate)
+    except Exception as exc:
+        logger.debug("compute_chain_greeks failed: %s", exc)
+        chain = []
+    if not chain:
+        return defaults
+
+    # 1. Net Delta Exposure — sum(volume × delta × 100), normalised by total vol
+    total_vol = sum(c["volume"] for c in chain) or 1.0
+    net_delta = sum(c["volume"] * c["delta"] * 100 for c in chain)
+    net_delta_exposure = net_delta / (total_vol * 100)
+
+    # 2. Gamma Imbalance — call vs put gamma-weighted volume
+    call_gamma = sum(c["volume"] * c["gamma"] for c in chain if c["contract_type"] == "call")
+    put_gamma = sum(c["volume"] * c["gamma"] for c in chain if c["contract_type"] == "put")
+    denom = call_gamma + put_gamma
+    gamma_imbalance = (call_gamma - put_gamma) / max(denom, 1e-9)
+
+    # 3. Delta-weighted Put/Call Ratio
+    call_delta_vol = sum(abs(c["volume"] * c["delta"]) for c in chain if c["contract_type"] == "call")
+    put_delta_vol = sum(abs(c["volume"] * c["delta"]) for c in chain if c["contract_type"] == "put")
+    put_call_delta_ratio = put_delta_vol / max(call_delta_vol, 1e-9) - 1.0
+
+    # 4. IV Skew (25-delta)
+    iv_skew_25d = _compute_iv_skew(chain, target_delta=0.25)
+
+    # 5. IV Term Structure
+    iv_term_structure = _compute_iv_term_structure(chain)
+
+    return {
+        "net_delta_exposure": float(np.clip(net_delta_exposure, -2.0, 2.0)),
+        "gamma_imbalance": float(np.clip(gamma_imbalance, -1.0, 1.0)),
+        "put_call_delta_ratio": float(np.clip(put_call_delta_ratio, -2.0, 2.0)),
+        "iv_skew_25d": float(np.clip(iv_skew_25d, -1.0, 1.0)),
+        "iv_term_structure": float(np.clip(iv_term_structure, -1.0, 1.0)),
+    }
+
+
+def _compute_iv_skew(chain: list[dict], target_delta: float = 0.25) -> float:
+    """IV skew: 25-delta put IV minus 25-delta call IV.
+
+    Positive = puts more expensive = fear premium.
+    """
+    calls = [c for c in chain if c["contract_type"] == "call" and c["iv"] > 0]
+    puts = [c for c in chain if c["contract_type"] == "put" and c["iv"] > 0]
+
+    if not calls or not puts:
+        return 0.0
+
+    call_25d = min(calls, key=lambda c: abs(c["delta"] - target_delta))
+    put_25d = min(puts, key=lambda c: abs(abs(c["delta"]) - target_delta))
+
+    if call_25d["iv"] > 0:
+        return float((put_25d["iv"] - call_25d["iv"]) / call_25d["iv"])
+    return 0.0
+
+
+def _compute_iv_term_structure(chain: list[dict]) -> float:
+    """Front-month IV vs back-month IV.
+
+    Positive = backwardation (front > back) = short-term event pricing.
+    """
+    from datetime import datetime
+    today = datetime.now().date()
+
+    front = [
+        c for c in chain
+        if c["iv"] > 0
+        and (datetime.strptime(c["expiration"], "%Y-%m-%d").date() - today).days <= 30
+    ]
+    back = [
+        c for c in chain
+        if c["iv"] > 0
+        and (datetime.strptime(c["expiration"], "%Y-%m-%d").date() - today).days > 30
+    ]
+
+    if not front or not back:
+        return 0.0
+
+    avg_front_iv = float(np.mean([c["iv"] for c in front]))
+    avg_back_iv = float(np.mean([c["iv"] for c in back]))
+
+    if avg_back_iv > 0:
+        return float((avg_front_iv - avg_back_iv) / avg_back_iv)
+    return 0.0

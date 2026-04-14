@@ -37,6 +37,12 @@ def _make_orderflow_features():
 
 def _make_options_features():
     return {
+        "net_delta_exposure": 0.8,
+        "gamma_imbalance": 0.6,
+        "put_call_delta_ratio": -0.3,
+        "iv_skew_25d": 0.4,
+        "iv_term_structure": 0.3,
+        # Legacy volume-proxy keys (still present in compute_options_features output)
         "call_volume_zscore": 3.0,
         "put_volume_zscore": 0.5,
         "put_call_ratio_change": 0.2,

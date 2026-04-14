@@ -104,7 +104,8 @@ def run_analysis_for_ticker(ticker: str, config, macro_features: dict | None = N
 
     try:
         data = _fetch_stock_data(ticker)
-        features = _compute_stock_features(data)
+        irx_rate = macro_features.get("irx_rate", 0.05) if macro_features else 0.05
+        features = _compute_stock_features(data, risk_free_rate=irx_rate)
         signals = _compute_stock_signals(features, macro_features)
         ticker_score = compute_score(ticker, signals, config.weights)
 
