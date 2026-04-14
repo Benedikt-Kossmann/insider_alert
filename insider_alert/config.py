@@ -123,6 +123,7 @@ class Config:
     finbert: dict = field(default_factory=lambda: dict(_DEFAULT_FINBERT))
     garch: dict = field(default_factory=lambda: dict(_DEFAULT_GARCH))
     fred_api_key: str = ""
+    charts: dict = field(default_factory=lambda: {"enabled": True, "style": "charles", "days": 30})
 
 
 def load_config(path: str = "config.yaml") -> "Config":
@@ -194,6 +195,16 @@ def load_config(path: str = "config.yaml") -> "Config":
     # GARCH config
     garch = {**_DEFAULT_GARCH, **raw.get("garch", {})}
 
+    # Charts config (Phase 9)
+    charts = {
+        "enabled": True,
+        "style": "charles",
+        "days": 30,
+        "include_ema": True,
+        "include_sr": True,
+        **raw.get("charts", {}),
+    }
+
     config = Config(
         tickers=tickers,
         alert_threshold=alert_threshold,
@@ -210,6 +221,7 @@ def load_config(path: str = "config.yaml") -> "Config":
         finbert=finbert,
         garch=garch,
         fred_api_key=raw.get("fred_api_key", "") or os.getenv("FRED_API_KEY", ""),
+        charts=charts,
     )
     _validate_config(config)
     return config

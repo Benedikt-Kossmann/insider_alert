@@ -8,6 +8,17 @@ scheduler:
   intraday_interval_minutes: 60
 
 # =============================================================================
+# Chart-Generation (Phase 9)
+# =============================================================================
+
+charts:
+  enabled: true
+  style: "charles"      # mplfinance Style
+  days: 30              # Tage im Candlestick-Chart
+  include_ema: true
+  include_sr: true
+
+# =============================================================================
 # FinBERT Sentiment
 # =============================================================================
 

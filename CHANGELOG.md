@@ -11,6 +11,33 @@ Legend:
 
 ---
 
+## Phase 9 — Chart-Generation für Telegram (2026-04-14)
+
+### Added
+- `insider_alert/alert_engine/chart_generator.py` — Neu:
+  - `generate_ticker_chart(ohlcv, ticker, score, ...)` — Candlestick-PNG mit EMA10/50, S/R-Levels als horizontale Linien, Volume-Panel. Speichert in `/tmp/insider_alert_charts/`.
+  - `generate_macro_dashboard(market_ctx, days=90)` — 3-Panel PNG: VIX, Yield Curve (10Y-3M), Dollar (UUP). Für den Weekly Report.
+  - `cleanup_old_charts(max_age_days=7)` — Löscht PNGs älter als N Tage.
+- `insider_alert/alert_engine/telegram_alert.py`:
+  - `send_telegram_photo(token, chat_id, image_path, caption)` — sendet lokale PNG-Datei via Telegram `sendPhoto`-API.
+
+### Changed
+- `insider_alert/scheduler/jobs.py`:
+  - `run_analysis_for_ticker()`: sendet nach einem Text-Alert automatisch den Ticker-Chart via `send_telegram_photo()` (wenn `charts.enabled: true`).
+  - `run_eod_job()`: ruft `cleanup_old_charts()` am Ende auf.
+- `insider_alert/alert_engine/weekly_report.py`:
+  - `send_weekly_report()`: sendet nach dem Textbericht das Makro-Dashboard als Bild.
+- `insider_alert/config.py`:
+  - `Config` Dataclass: neues Feld `charts: dict` mit Defaults `{enabled: true, style: "charles", days: 30}`.
+  - `load_config()`: liest `charts:` aus config.yaml.
+- `config.yaml`: neuer Abschnitt `charts:` mit `enabled`, `style`, `days`, `include_ema`, `include_sr`.
+
+### Migration
+- 📦 **Deps**: `pip install -r requirements.txt` (neu: `mplfinance>=0.12`)
+- 🔄 **Restart**: `sudo systemctl restart insider-alert`
+
+---
+
 ## Phase 8 — Anomaly Detection (Isolation Forest + Feature Drift) (2026-04-14)
 
 ### Added

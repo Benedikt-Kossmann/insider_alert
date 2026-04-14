@@ -6,6 +6,7 @@ import requests
 logger = logging.getLogger(__name__)
 
 _TELEGRAM_API = "https://api.telegram.org/bot{token}/sendMessage"
+_TELEGRAM_PHOTO_API = "https://api.telegram.org/bot{token}/sendPhoto"
 
 
 def send_telegram_message(token: str, chat_id: str, message: str) -> bool:
@@ -30,6 +31,42 @@ def send_telegram_message(token: str, chat_id: str, message: str) -> bool:
         return False
     except Exception as exc:
         logger.error("Failed to send Telegram message: %s", exc)
+        return False
+
+
+def send_telegram_photo(token: str, chat_id: str, image_path: str, caption: str = "") -> bool:
+    """Sende Bild über Telegram Bot API.
+
+    Parameters
+    ----------
+    token : Telegram Bot Token
+    chat_id : Telegram Chat-ID
+    image_path : Pfad zur lokalen PNG-Datei
+    caption : Bildunterschrift (max 1024 Zeichen)
+
+    Returns
+    -------
+    bool — True bei Erfolg
+    """
+    if not token or not chat_id:
+        logger.warning("Telegram not configured; skipping photo")
+        return False
+    url = _TELEGRAM_PHOTO_API.format(token=token)
+    try:
+        with open(image_path, "rb") as photo:
+            resp = requests.post(
+                url,
+                data={"chat_id": chat_id, "caption": caption[:1024], "parse_mode": "Markdown"},
+                files={"photo": photo},
+                timeout=30,
+            )
+        if resp.status_code == 200 and resp.json().get("ok"):
+            logger.info("Telegram photo sent: %s", image_path)
+            return True
+        logger.warning("Telegram photo API error: %s", resp.text)
+        return False
+    except Exception as exc:
+        logger.warning("Telegram photo send failed: %s", exc)
         return False
 
 

@@ -158,11 +158,29 @@ def send_weekly_report(config) -> bool:
 
     Returns True if sent successfully.
     """
-    from insider_alert.alert_engine.telegram_alert import send_telegram_message
+    from insider_alert.alert_engine.telegram_alert import send_telegram_message, send_telegram_photo
 
     try:
         report = generate_weekly_report(config.tickers)
-        return send_telegram_message(config.telegram_token, config.telegram_chat_id, report)
+        success = send_telegram_message(config.telegram_token, config.telegram_chat_id, report)
+
+        # Macro dashboard chart (Phase 9)
+        charts_cfg = getattr(config, "charts", {}) or {}
+        if charts_cfg.get("enabled", True):
+            try:
+                from insider_alert.alert_engine.chart_generator import generate_macro_dashboard
+                dashboard_path = generate_macro_dashboard({})
+                if dashboard_path:
+                    send_telegram_photo(
+                        config.telegram_token,
+                        config.telegram_chat_id,
+                        dashboard_path,
+                        caption="📊 Macro Dashboard — Weekly Overview",
+                    )
+            except Exception as exc:
+                logger.warning("Macro dashboard failed: %s", exc)
+
+        return success
     except Exception as exc:
         logger.error("Failed to send weekly report: %s", exc)
         return False

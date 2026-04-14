@@ -132,6 +132,29 @@ def run_analysis_for_ticker(ticker: str, config, macro_features: dict | None = N
             message = build_alert_message(ticker_score, sr_features, sector_features, ml_score=ml_score, anomaly_info=anomaly_info)
             save_alert(ticker, date.today(), ticker_score.total_score, message)
 
+            # Chart generation (Phase 9)
+            charts_cfg = getattr(config, "charts", {}) or {}
+            if charts_cfg.get("enabled", True):
+                from insider_alert.alert_engine.chart_generator import generate_ticker_chart
+                from insider_alert.alert_engine.telegram_alert import send_telegram_photo
+                chart_path = generate_ticker_chart(
+                    ohlcv=data["ohlcv"],
+                    ticker=ticker,
+                    score=ticker_score.total_score,
+                    support_levels=sr_features.get("support_levels") if sr_features else None,
+                    resistance_levels=sr_features.get("resistance_levels") if sr_features else None,
+                    signal_flags=ticker_score.flags[:5],
+                    days=int(charts_cfg.get("days", 30)),
+                    style=str(charts_cfg.get("style", "charles")),
+                )
+                if chart_path:
+                    send_telegram_photo(
+                        config.telegram_token,
+                        config.telegram_chat_id,
+                        chart_path,
+                        caption=f"*{ticker}* — Score: {ticker_score.total_score:.0f}/100",
+                    )
+
         # Run trade-alert detectors
         run_trade_alerts_for_ticker(
             ticker, config, data["ohlcv"],
@@ -389,6 +412,13 @@ def run_eod_job(config) -> None:
 
     # Discovery scanner
     run_discovery_scan_job(config)
+
+    # Chart cleanup (Phase 9) — entferne alte PNGs
+    try:
+        from insider_alert.alert_engine.chart_generator import cleanup_old_charts
+        cleanup_old_charts(max_age_days=7)
+    except Exception as exc:
+        logger.debug("Chart cleanup failed: %s", exc)
 
 
 def run_intraday_job(config) -> None:

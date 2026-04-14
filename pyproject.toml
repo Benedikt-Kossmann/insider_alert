@@ -22,6 +22,7 @@ dependencies = [
     "transformers>=4.35",
     "torch>=2.1",
     "fredapi>=0.5",
+    "mplfinance>=0.12",
 ]
 
 [tool.setuptools.packages.find]
