@@ -2,6 +2,8 @@
 import logging
 from datetime import date
 
+import numpy as np
+
 logger = logging.getLogger(__name__)
 
 
@@ -123,6 +125,94 @@ def _nearest_corp_event(corporate_events) -> int | None:
 
 
 # ---------------------------------------------------------------------------
+# Market context builder (shared across stock + ETF pipelines)
+# ---------------------------------------------------------------------------
+
+def build_market_context(config) -> dict:
+    """Build a shared market-context dict with macro, news, and options data.
+
+    Fetches macro data once, then for each unique ``news_proxy`` in the ETF
+    universe fetches news and (where available) options data.  The result is
+    a dict::
+
+        {
+            "macro": {…}  or None,
+            "news":    {"SPY": {…}, "QQQ": {…}, …},
+            "options": {"SPY": {…}, "QQQ": {…}, …},
+        }
+    """
+    from insider_alert.data_ingestion.macro_data import fetch_macro_data
+    from insider_alert.feature_engine.macro_features import compute_macro_features
+    from insider_alert.data_ingestion.news_data import fetch_news
+    from insider_alert.feature_engine.news_features import compute_news_features
+    from insider_alert.data_ingestion.options_data import fetch_options_chain, fetch_historical_iv
+    from insider_alert.feature_engine.options_features import compute_options_features
+    from insider_alert.data_ingestion.market_data import fetch_ohlcv_daily
+
+    ctx: dict = {"macro": None, "news": {}, "options": {}}
+
+    # --- Macro (once) ---
+    macro_cfg = getattr(config, "macro", None) or {}
+    if macro_cfg.get("enabled", False):
+        try:
+            macro_data = fetch_macro_data(
+                vix_ticker=macro_cfg.get("vix_ticker", ""),
+                tnx_ticker=macro_cfg.get("tnx_ticker", ""),
+                irx_ticker=macro_cfg.get("irx_ticker", ""),
+                dxy_ticker=macro_cfg.get("dxy_ticker", ""),
+            )
+            ctx["macro"] = compute_macro_features(macro_data)
+            mf = ctx["macro"]
+            logger.info(
+                "Macro regime: %s (VIX=%.1f, yield spread=%.2f%%, DXY %s)",
+                mf["risk_regime"], mf["vix_current"],
+                mf["yield_spread"], mf["dxy_trend"],
+            )
+        except Exception as exc:
+            logger.warning("Macro data fetch failed: %s", exc)
+
+    # --- Collect unique proxy tickers ---
+    le_cfg = getattr(config, "leveraged_etfs", None) or {}
+    universe = le_cfg.get("universe", [])
+    proxies: set[str] = set()
+    for entry in universe:
+        proxy = entry.get("news_proxy", "")
+        if proxy:
+            proxies.add(proxy)
+
+    # --- News + options per proxy ---
+    for proxy in proxies:
+        # News
+        try:
+            news_df = fetch_news(proxy)
+            ohlcv = fetch_ohlcv_daily(proxy, period="1mo")
+            return_1d = 0.0
+            if not ohlcv.empty and "close" in ohlcv.columns and len(ohlcv) >= 2:
+                return_1d = float(ohlcv["close"].iloc[-1] / ohlcv["close"].iloc[-2] - 1)
+            ctx["news"][proxy] = compute_news_features(news_df, return_1d)
+            logger.info("News features for proxy %s: sentiment=%.2f, count=%d",
+                        proxy, ctx["news"][proxy].get("news_sentiment_score", 0),
+                        ctx["news"][proxy].get("news_count_24h", 0))
+        except Exception as exc:
+            logger.warning("News fetch failed for proxy %s: %s", proxy, exc)
+
+        # Options (may not be available for all proxies)
+        try:
+            opts_df = fetch_options_chain(proxy)
+            if not opts_df.empty:
+                iv_baseline = fetch_historical_iv(proxy)
+                current_price = 0.0
+                if not ohlcv.empty and "close" in ohlcv.columns:
+                    current_price = float(ohlcv["close"].iloc[-1])
+                ctx["options"][proxy] = compute_options_features(opts_df, current_price, iv_baseline)
+                logger.info("Options features for proxy %s loaded", proxy)
+        except Exception as exc:
+            logger.warning("Options fetch failed for proxy %s: %s", proxy, exc)
+
+    return ctx
+
+
+# ---------------------------------------------------------------------------
 # Signal computation helpers
 # ---------------------------------------------------------------------------
 
@@ -155,7 +245,10 @@ def _compute_stock_signals(features: dict, macro_features: dict | None = None) -
     return signals
 
 
-def _compute_etf_features_and_signals(data: dict, le_cfg: dict, leverage: int, direction: str) -> dict:
+def _compute_etf_features_and_signals(
+    data: dict, le_cfg: dict, leverage: int, direction: str,
+    market_ctx: dict | None = None, news_proxy: str = "",
+) -> dict:
     """Compute ETF features and signals. Returns dict with features, signals, and maps."""
     from insider_alert.feature_engine.price_features import compute_price_features
     from insider_alert.feature_engine.volume_features import compute_volume_features
@@ -194,6 +287,23 @@ def _compute_etf_features_and_signals(data: dict, le_cfg: dict, leverage: int, d
         compute_price_anomaly_signal(price_f),
         compute_volume_anomaly_signal(volume_f),
     ]
+
+    # --- Market-context signals (macro, news, options) ---
+    if market_ctx:
+        macro_f = market_ctx.get("macro")
+        if macro_f:
+            from insider_alert.signal_engine.macro_signal import compute_macro_regime_signal
+            signals.append(compute_macro_regime_signal(macro_f))
+
+        news_f = market_ctx.get("news", {}).get(news_proxy) if news_proxy else None
+        if news_f:
+            from insider_alert.signal_engine.etf_news_signal import compute_etf_news_sentiment_signal
+            signals.append(compute_etf_news_sentiment_signal(news_f, direction=direction))
+
+        opts_f = market_ctx.get("options", {}).get(news_proxy) if news_proxy else None
+        if opts_f:
+            from insider_alert.signal_engine.options_signal import compute_options_anomaly_signal
+            signals.append(compute_options_anomaly_signal(opts_f))
 
     return {
         "price_f": price_f,

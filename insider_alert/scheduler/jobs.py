@@ -137,7 +137,7 @@ def run_analysis_for_ticker(ticker: str, config, macro_features: dict | None = N
         logger.error("Analysis failed for %s: %s", ticker, exc, exc_info=True)
 
 
-def run_etf_analysis_for_ticker(etf_entry: dict, config) -> None:
+def run_etf_analysis_for_ticker(etf_entry: dict, config, market_ctx: dict | None = None) -> None:
     """Run leveraged-ETF analysis pipeline for one ETF."""
     from insider_alert.scheduler.pipeline import (
         _fetch_etf_data, _compute_etf_features_and_signals,
@@ -157,6 +157,7 @@ def run_etf_analysis_for_ticker(etf_entry: dict, config) -> None:
     direction = etf_entry.get("direction", "long")
     leverage = int(etf_entry.get("leverage", 3))
     label = etf_entry.get("label", "")
+    news_proxy = etf_entry.get("news_proxy", "")
     le_cfg = config.leveraged_etfs
 
     logger.info("Running ETF analysis for %s (underlying=%s, %dx %s)", ticker, underlying, leverage, direction)
@@ -169,7 +170,8 @@ def run_etf_analysis_for_ticker(etf_entry: dict, config) -> None:
             logger.warning("No OHLCV data for ETF %s, skipping", ticker)
             return
 
-        result = _compute_etf_features_and_signals(data, le_cfg, leverage, direction)
+        result = _compute_etf_features_and_signals(data, le_cfg, leverage, direction,
+                                                    market_ctx=market_ctx, news_proxy=news_proxy)
         signals_list = result["signals"]
 
         # Scoring
@@ -202,6 +204,7 @@ def run_etf_analysis_for_ticker(etf_entry: dict, config) -> None:
             ticker, signals_map, result["momentum_f"], result["vol_regime_f"], result["leverage_f"],
             risk_cfg=risk_cfg, entry_cfg=entry_cfg,
             direction=direction, underlying=underlying, leverage=leverage,
+            market_ctx=market_ctx, news_proxy=news_proxy,
         )
         if entry:
             entry["risk_lines"] = risk_lines
@@ -333,8 +336,11 @@ def _run_weekly_report(config) -> None:
 
 def run_eod_job(config) -> None:
     """End-of-day batch: analyze all tickers in config."""
-    # Fetch macro once for all tickers
-    macro_features = _fetch_macro_features(config)
+    from insider_alert.scheduler.pipeline import build_market_context
+
+    # Build shared market context (macro + news + options per proxy)
+    market_ctx = build_market_context(config)
+    macro_features = market_ctx.get("macro")
 
     # Backfill past signal outcomes
     _run_outcome_backfill()
@@ -355,7 +361,7 @@ def run_eod_job(config) -> None:
         universe = le_cfg.get("universe", [])
         logger.info("Running EOD leveraged-ETF job for %d ETFs", len(universe))
         for etf_entry in universe:
-            run_etf_analysis_for_ticker(etf_entry, config)
+            run_etf_analysis_for_ticker(etf_entry, config, market_ctx=market_ctx)
 
     # Discovery scanner
     run_discovery_scan_job(config)
@@ -363,7 +369,10 @@ def run_eod_job(config) -> None:
 
 def run_intraday_job(config) -> None:
     """Intraday job: quick scan."""
-    macro_features = _fetch_macro_features(config)
+    from insider_alert.scheduler.pipeline import build_market_context
+
+    market_ctx = build_market_context(config)
+    macro_features = market_ctx.get("macro")
 
     logger.info("Running intraday job for %d tickers", len(config.tickers))
     for ticker in config.tickers:
@@ -375,7 +384,7 @@ def run_intraday_job(config) -> None:
         universe = le_cfg.get("universe", [])
         logger.info("Running intraday leveraged-ETF job for %d ETFs", len(universe))
         for etf_entry in universe:
-            run_etf_analysis_for_ticker(etf_entry, config)
+            run_etf_analysis_for_ticker(etf_entry, config, market_ctx=market_ctx)
 
 
 def start_scheduler(config, blocking: bool = True) -> None:

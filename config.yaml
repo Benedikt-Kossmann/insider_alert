@@ -163,68 +163,83 @@ leveraged_etfs:
       direction: long
       leverage: 3
       label: "WisdomTree DAX 3x Daily Long"
+      news_proxy: EWG
     - ticker: 3DES.DE
       underlying: "^GDAXI"
       direction: short
       leverage: 3
       label: "WisdomTree DAX 3x Daily Short"
+      news_proxy: EWG
     - ticker: 3USL.L
       underlying: "^GSPC"
       direction: long
       leverage: 3
       label: "WisdomTree S&P 500 3x Daily Long"
+      news_proxy: SPY
     - ticker: 3USS.L
       underlying: "^GSPC"
       direction: short
       leverage: 3
       label: "WisdomTree S&P 500 3x Daily Short"
+      news_proxy: SPY
     - ticker: 3QQQ.DE
       underlying: "^NDX"
       direction: long
       leverage: 3
       label: "WisdomTree NASDAQ 100 3x Daily Long"
+      news_proxy: QQQ
     - ticker: 3QSS.DE
       underlying: "^NDX"
       direction: short
       leverage: 3
       label: "WisdomTree NASDAQ 100 3x Daily Short"
+      news_proxy: QQQ
     # --- Rohstoffe ---
     - ticker: 3GOL.L
       underlying: "GC=F"
       direction: long
       leverage: 3
       label: "WisdomTree Gold 3x Daily Long"
+      news_proxy: GLD
     - ticker: 3GOS.L
       underlying: "GC=F"
       direction: short
       leverage: 3
       label: "WisdomTree Gold 3x Daily Short"
+      news_proxy: GLD
     - ticker: 3SIL.L
       underlying: "SI=F"
       direction: long
       leverage: 3
       label: "WisdomTree Silver 3x Daily Long"
+      news_proxy: SLV
     - ticker: 3SIS.L
       underlying: "SI=F"
       direction: short
       leverage: 3
       label: "WisdomTree Silver 3x Daily Short"
+      news_proxy: SLV
 
   scoring:
     alert_threshold: 68
     weights:
-      momentum: 0.25
-      mean_reversion_dip: 0.20
-      volatility_regime: 0.20
-      leverage_health: 0.15
-      volume_anomaly: 0.10
-      price_anomaly: 0.10
+      momentum: 0.20
+      mean_reversion_dip: 0.15
+      volatility_regime: 0.15
+      leverage_health: 0.10
+      volume_anomaly: 0.05
+      price_anomaly: 0.05
+      macro_regime: 0.10
+      news_sentiment: 0.10
+      options_anomaly: 0.10
 
   entry:
     momentum_min_score: 68
     health_min_score: 62
     dip_min_score: 75
     vix_max: 30
+    veto_news_sentiment: -0.5
+    veto_news_sentiment_short: 0.5
 
   risk:
     max_holding_days_low_vol: 15

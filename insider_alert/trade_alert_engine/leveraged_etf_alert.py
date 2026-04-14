@@ -16,6 +16,8 @@ def detect_leveraged_etf_entry(
     direction: str = "long",
     underlying: str = "",
     leverage: int = 3,
+    market_ctx: dict | None = None,
+    news_proxy: str = "",
 ) -> dict | None:
     """Detect a leveraged-ETF entry opportunity.
 
@@ -41,6 +43,10 @@ def detect_leveraged_etf_entry(
         Underlying ticker symbol (for display).
     leverage : int
         Leverage factor.
+    market_ctx : dict | None
+        Shared market context with macro/news/options data.
+    news_proxy : str
+        Proxy ticker to look up news features from market_ctx.
 
     Returns
     -------
@@ -48,6 +54,36 @@ def detect_leveraged_etf_entry(
         Alert dict or ``None`` if no entry signal detected.
     """
     entry_cfg = entry_cfg or {}
+
+    # --- Veto checks (hard blocks based on market context) ---
+    if market_ctx:
+        macro_f = market_ctx.get("macro") or {}
+        news_f = market_ctx.get("news", {}).get(news_proxy, {}) if news_proxy else {}
+        sentiment = float(news_f.get("news_sentiment_score", 0.0))
+        risk_regime = macro_f.get("risk_regime", "")
+        vix_regime = macro_f.get("vix_regime", "")
+        yc_regime = macro_f.get("yield_curve_regime", "")
+        dxy_trend = macro_f.get("dxy_trend", "")
+
+        veto_sentiment_long = float(entry_cfg.get("veto_news_sentiment", -0.5))
+        veto_sentiment_short = float(entry_cfg.get("veto_news_sentiment_short", 0.5))
+
+        if direction == "long":
+            if risk_regime == "risk_off" and vix_regime == "high":
+                logger.info("VETO %s: risk_off + high VIX → long entry blocked", ticker)
+                return None
+            if sentiment < veto_sentiment_long and news_f:
+                logger.info("VETO %s: sentiment %.2f < %.2f → long entry blocked",
+                            ticker, sentiment, veto_sentiment_long)
+                return None
+            if yc_regime == "inverted" and dxy_trend == "rising":
+                logger.info("VETO %s: inverted yield curve + rising DXY → long entry blocked", ticker)
+                return None
+        elif direction == "short":
+            if risk_regime == "risk_on" and sentiment > veto_sentiment_short and news_f:
+                logger.info("VETO %s: risk_on + sentiment %.2f > %.2f → short entry blocked",
+                            ticker, sentiment, veto_sentiment_short)
+                return None
     momentum_min = float(entry_cfg.get("momentum_min_score", 60))
     health_min = float(entry_cfg.get("health_min_score", 50))
     dip_min = float(entry_cfg.get("dip_min_score", 70))
