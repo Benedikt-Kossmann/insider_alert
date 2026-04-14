@@ -82,7 +82,7 @@ python main.py scan --ticker NVDA
 python main.py schedule
 ```
 
-For Ubuntu server operation, use `systemd` instead of `screen`. See [docs/ubuntu-deployment.md](/opt/insider_alert/docs/ubuntu-deployment.md).
+For Ubuntu server operation, use `systemd` instead of `screen`. See [docs/ubuntu-deployment.md](docs/ubuntu-deployment.md).
 
 ---
 
@@ -133,8 +133,8 @@ For a persistent Ubuntu server setup:
 
 Reference files:
 
-- [docs/ubuntu-deployment.md](/opt/insider_alert/docs/ubuntu-deployment.md)
-- [deploy/systemd/insider-alert.service](/opt/insider_alert/deploy/systemd/insider-alert.service)
+- [docs/ubuntu-deployment.md](docs/ubuntu-deployment.md)
+- [deploy/systemd/insider-alert.service](deploy/systemd/insider-alert.service)
 
 ---
 

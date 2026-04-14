@@ -4,8 +4,8 @@ This project does not need `screen` or `tmux` to run on Ubuntu. For production u
 
 ## Assumptions
 
-- Repo path: `/opt/insider_alert`
-- Service user: `ubuntu`
+- Repo path: `/root/insider_alert`
+- Service user: `root`
 - Python version: `3.10+`
 
 Adjust paths and user names to match your server.
@@ -13,10 +13,8 @@ Adjust paths and user names to match your server.
 ## Initial setup
 
 ```bash
-sudo mkdir -p /opt/insider_alert
-sudo chown "$USER":"$USER" /opt/insider_alert
-git clone <YOUR_REPO_URL> /opt/insider_alert
-cd /opt/insider_alert
+git clone <YOUR_REPO_URL> /root/insider_alert
+cd /root/insider_alert
 python3 -m venv .venv
 ./.venv/bin/pip install --upgrade pip
 ./.venv/bin/pip install -r requirements.txt
@@ -27,7 +25,7 @@ Edit `.env` and `config.yaml` before starting the service.
 
 ## systemd service
 
-Copy the example service file from [`deploy/systemd/insider-alert.service`](/opt/insider_alert/deploy/systemd/insider-alert.service) to `/etc/systemd/system/insider-alert.service` and adjust `User` and `WorkingDirectory` if needed.
+Copy the example service file from `deploy/systemd/insider-alert.service` to `/etc/systemd/system/insider-alert.service`.
 
 Then enable and start it:
 
@@ -70,11 +68,11 @@ Repo changes do not affect an already running scheduler process until it is rest
 Recommended update flow:
 
 ```bash
-cd /opt/insider_alert
+cd /root/insider_alert
 git pull
 ./.venv/bin/pip install -r requirements.txt
-sudo systemctl restart insider-alert
-sudo systemctl status insider-alert
+systemctl restart insider-alert
+systemctl status insider-alert
 ```
 
 If `requirements.txt` did not change, the pip step can be skipped.

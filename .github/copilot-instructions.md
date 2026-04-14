@@ -1,7 +1,7 @@
 # Copilot Instructions for insider_alert
 
 ## Project Overview
-Financial signal detection system that monitors 45 US stocks and 10 leveraged ETFs, computing multi-signal composite scores and sending Telegram alerts when thresholds are met. Runs as a systemd service on Ubuntu (`/opt/insider_alert`).
+Financial signal detection system that monitors 45 US stocks and 10 leveraged ETFs, computing multi-signal composite scores and sending Telegram alerts when thresholds are met. Runs as a systemd service on Ubuntu (`/root/insider_alert`).
 
 ## Architecture
 
@@ -50,8 +50,8 @@ def my_signal(features: dict) -> tuple[float, list[str]]:
 
 ## Deployment Context
 
-- **Server**: Ubuntu, systemd service at `/opt/insider_alert`
-- **Venv**: `/opt/insider_alert/.venv`
+- **Server**: Ubuntu, systemd service at `/root/insider_alert`
+- **Venv**: `/root/insider_alert/.venv`
 - **Process**: `python main.py schedule` (long-running blocking scheduler)
 - **Restarting**: `sudo systemctl restart insider-alert`
 - **Update flow**: `git pull → pip install -r requirements.txt → systemctl restart`

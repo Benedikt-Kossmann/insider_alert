@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # deploy/upgrade.sh — Upgrade insider_alert on the production server
-# Usage: sudo bash deploy/upgrade.sh
-# Run from /opt/insider_alert (or the script detects WORKDIR automatically)
+# Usage: bash deploy/upgrade.sh
+# Run from /root/insider_alert
 set -euo pipefail
 
-WORKDIR="/opt/insider_alert"
+WORKDIR="/root/insider_alert"
 VENV="$WORKDIR/.venv"
 SERVICE="insider-alert"
 
