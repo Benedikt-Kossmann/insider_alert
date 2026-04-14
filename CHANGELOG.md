@@ -11,6 +11,34 @@ Legend:
 
 ---
 
+## Phase 11 — 13-F Institutional Flows (2026-04-14)
+
+### Added
+- `insider_alert/data_ingestion/institutional_data.py` — Neu:
+  - `fetch_institutional_flows(ticker)` — Prüft Top-20 Institutionen (SEC 13-F) via EDGAR Submissions API + XML-Parsing; gibt `institutional_buy_count`, `institutional_sell_count`, `institutional_net_direction`, `smart_money_score` zurück.
+  - `_fetch_latest_13f_url(cik)` — Findet neueste 13-F Filing-URL für ein CIK.
+  - `_parse_13f_xml(xml_url)` — Parst XML Information Table.
+  - Rate-Limit: 0.12s zwischen Requests (gleich wie insider_data.py); SEC User-Agent gesetzt.
+- `insider_alert/signal_engine/institutional_signal.py` — Neu:
+  - `institutional_signal(features)` — SignalComponent-Pattern; score 0–100 aus `smart_money_score` (max 60) + `institutional_buy_count` (max 40).
+
+### Changed
+- `insider_alert/persistence/storage.py`:
+  - Neue ORM-Klasse `InstitutionalCache` — 7-Tage-Cache für 13-F-Ergebnisse je Ticker.
+  - Neue Funktionen: `get_cached_institutional()`, `save_institutional_cache()`, `should_refresh_institutional()`.
+- `insider_alert/scheduler/pipeline.py`:
+  - `_fetch_stock_data()`: ruft `fetch_institutional_flows()` auf (mit 7-Tage-Cache); Ergebnis unter Key `"institutional"` im Data-Dict.
+  - `_compute_stock_features()`: reicht `data["institutional"]` direkt als Feature-Group `"institutional"` weiter.
+  - `_compute_stock_signals()`: fügt `institutional_signal()` zur Signalliste hinzu.
+- `insider_alert/scoring_engine/scorer.py`:
+  - `DEFAULT_WEIGHTS`: `"institutional": 0.05` hinzugefügt; `price_anomaly`, `volume_anomaly`, `options_anomaly`, `insider_signal`, `event_leadup` jeweils leicht reduziert (Summe bleibt 1.0).
+
+### Migration
+- 🗄️ **DB**: Neue Tabelle `institutional_cache` — wird automatisch beim nächsten Start angelegt (`Base.metadata.create_all()`).
+- 🔄 **Restart**: `sudo systemctl restart insider-alert`
+
+---
+
 ## Phase 10 — Risk Management & Position Sizing (2026-04-14)
 
 ### Added

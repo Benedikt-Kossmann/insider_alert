@@ -80,6 +80,18 @@ class SentimentCache(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
+class InstitutionalCache(Base):
+    """Persistent cache for SEC 13-F institutional flow results (TTL: 7 days)."""
+    __tablename__ = "institutional_cache"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    ticker = Column(String(16), unique=True, index=True, nullable=False)
+    institutional_buy_count = Column(Integer, nullable=False, default=0)
+    institutional_sell_count = Column(Integer, nullable=False, default=0)
+    institutional_net_direction = Column(String(16), nullable=False, default="neutral")
+    smart_money_score = Column(Float, nullable=False, default=0.5)
+    fetched_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+
+
 def _get_engine(db_url: str):
     if db_url not in _engines:
         _engines[db_url] = create_engine(db_url, echo=False)
@@ -129,6 +141,70 @@ def save_sentiment_cache(
                 label=label,
             ))
             session.commit()
+
+
+def get_cached_institutional(
+    ticker: str,
+    db_url: str = "sqlite:///insider_alert.db",
+) -> dict | None:
+    """Return cached institutional flow data for *ticker*, or None if not cached."""
+    engine = _get_engine(db_url)
+    Session = sessionmaker(bind=engine)
+    with Session() as session:
+        row = session.query(InstitutionalCache).filter_by(ticker=ticker.upper()).first()
+        if row:
+            return {
+                "institutional_buy_count": row.institutional_buy_count,
+                "institutional_sell_count": row.institutional_sell_count,
+                "institutional_net_direction": row.institutional_net_direction,
+                "smart_money_score": row.smart_money_score,
+            }
+    return None
+
+
+def save_institutional_cache(
+    ticker: str,
+    data: dict,
+    db_url: str = "sqlite:///insider_alert.db",
+) -> None:
+    """Upsert institutional flow data for *ticker* (replaces existing row)."""
+    engine = _get_engine(db_url)
+    Session = sessionmaker(bind=engine)
+    with Session() as session:
+        existing = session.query(InstitutionalCache).filter_by(ticker=ticker.upper()).first()
+        if existing:
+            existing.institutional_buy_count = data.get("institutional_buy_count", 0)
+            existing.institutional_sell_count = data.get("institutional_sell_count", 0)
+            existing.institutional_net_direction = data.get("institutional_net_direction", "neutral")
+            existing.smart_money_score = data.get("smart_money_score", 0.5)
+            existing.fetched_at = datetime.now(timezone.utc)
+        else:
+            session.add(InstitutionalCache(
+                ticker=ticker.upper(),
+                institutional_buy_count=data.get("institutional_buy_count", 0),
+                institutional_sell_count=data.get("institutional_sell_count", 0),
+                institutional_net_direction=data.get("institutional_net_direction", "neutral"),
+                smart_money_score=data.get("smart_money_score", 0.5),
+                fetched_at=datetime.now(timezone.utc),
+            ))
+        session.commit()
+
+
+def should_refresh_institutional(
+    ticker: str,
+    ttl_days: int = 7,
+    db_url: str = "sqlite:///insider_alert.db",
+) -> bool:
+    """Return True when institutional cache for *ticker* is absent or expired."""
+    from datetime import timedelta
+    engine = _get_engine(db_url)
+    Session = sessionmaker(bind=engine)
+    with Session() as session:
+        row = session.query(InstitutionalCache).filter_by(ticker=ticker.upper()).first()
+        if row is None:
+            return True
+        age = datetime.now(timezone.utc) - row.fetched_at.replace(tzinfo=timezone.utc)
+        return age > timedelta(days=ttl_days)
 
 
 def save_signal(

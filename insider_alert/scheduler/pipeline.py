@@ -36,6 +36,33 @@ def _fetch_stock_data(ticker: str) -> dict:
     except Exception:
         earnings_raw = {}
 
+    # Institutional 13-F flows (Phase 11) — served from 7-day cache
+    try:
+        from insider_alert.persistence.storage import (
+            get_cached_institutional,
+            save_institutional_cache,
+            should_refresh_institutional,
+        )
+        from insider_alert.data_ingestion.institutional_data import fetch_institutional_flows
+
+        if should_refresh_institutional(ticker):
+            inst_data = fetch_institutional_flows(ticker)
+            save_institutional_cache(ticker, inst_data)
+        else:
+            inst_data = get_cached_institutional(ticker) or {
+                "institutional_buy_count": 0,
+                "institutional_sell_count": 0,
+                "institutional_net_direction": "neutral",
+                "smart_money_score": 0.5,
+            }
+    except Exception:
+        inst_data = {
+            "institutional_buy_count": 0,
+            "institutional_sell_count": 0,
+            "institutional_net_direction": "neutral",
+            "smart_money_score": 0.5,
+        }
+
     return {
         "ohlcv": fetch_ohlcv_daily(ticker),
         "options": fetch_options_chain(ticker),
@@ -49,6 +76,7 @@ def _fetch_stock_data(ticker: str) -> dict:
         "ticker": ticker,
         "short_vol_df": short_vol_df,
         "earnings_raw": earnings_raw,
+        "institutional": inst_data,
     }
 
 
@@ -143,6 +171,7 @@ def _compute_stock_features(data: dict, risk_free_rate: float = 0.05) -> dict:
         "sector_rotation": sector_rotation_f,
         "short_volume": short_vol_f,
         "pead": pead_f,
+        "institutional": data.get("institutional", {}),
     }
 
 
@@ -324,6 +353,10 @@ def _compute_stock_signals(features: dict, macro_features: dict | None = None, m
     # Earnings Drift (PEAD) signal (Phase 7)
     from insider_alert.signal_engine.earnings_drift_signal import earnings_drift_signal
     signals.append(earnings_drift_signal(features.get("pead", {})))
+
+    # Institutional 13-F flow signal (Phase 11)
+    from insider_alert.signal_engine.institutional_signal import institutional_signal
+    signals.append(institutional_signal(features.get("institutional", {})))
 
     return signals
 
