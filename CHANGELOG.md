@@ -11,6 +11,28 @@ Legend:
 
 ---
 
+## Phase 8 — Anomaly Detection (Isolation Forest + Feature Drift) (2026-04-14)
+
+### Added
+- `insider_alert/scoring_engine/anomaly_detector.py` — Isolation Forest–based anomaly detection:
+  - `compute_anomaly_score(signal_scores)` — trains on historical signal scores from DB, returns `{anomaly_score, is_anomaly, anomaly_type}`. Types: `rare_opportunity` (anomal + bullish), `rare_risk` (anomal + bearish), `normal`.
+  - `detect_feature_drift(current_features)` — KS-test comparing last 20 observations vs. older history; returns `{drift_detected, drifted_features, drift_severity}`.
+  - Modell re-trainsiert automatisch alle 7 Tage wenn ≥ 100 Samples in der DB vorhanden.
+- `tests/test_anomaly_detection.py` — 16 neue Tests für alle Phase-8-Komponenten.
+
+### Changed
+- `insider_alert/scheduler/jobs.py`:
+  - `run_analysis_for_ticker()`: berechnet `anomaly_info` nach Signal-Scoring und gibt es an `maybe_send_alert` + `build_alert_message` weiter.
+  - `run_eod_job()`: ruft `detect_feature_drift({})` einmal pro Job auf und loggt Drift als WARNING.
+- `insider_alert/alert_engine/telegram_alert.py`:
+  - `build_alert_message()`: neuer Parameter `anomaly_info`; fügt 🔥 *RARE OPPORTUNITY* oder ⚠️ *RARE RISK* Zeile ein wenn relevant.
+  - `maybe_send_alert()`: neuer Parameter `anomaly_info`, wird an `build_alert_message` durchgereicht.
+
+### Migration
+- 🔄 **Restart**: `sudo systemctl restart insider-alert`
+
+---
+
 ## Phase 7 — FINRA Short Volume & Earnings Drift (PEAD) (2026-04-14)
 
 ### Added

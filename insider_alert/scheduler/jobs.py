@@ -112,14 +112,24 @@ def run_analysis_for_ticker(ticker: str, config, macro_features: dict | None = N
         # ML scoring overlay
         ml_score = _get_ml_score(signals)
 
+        # Anomaly detection (Phase 8)
+        from insider_alert.scoring_engine.anomaly_detector import compute_anomaly_score
+        signal_scores = {s["signal_type"]: s["score"] for s in signals}
+        anomaly_info = compute_anomaly_score(signal_scores)
+        if anomaly_info["is_anomaly"]:
+            logger.info(
+                "Anomaly detected for %s: type=%s, score=%.3f",
+                ticker, anomaly_info["anomaly_type"], anomaly_info["anomaly_score"],
+            )
+
         _persist_signals_and_score(ticker, signals, ticker_score)
         save_signal_outcomes(ticker, date.today(), signals, ticker_score.total_score)
 
         sr_features = features.get("sr")
         sector_features = features.get("sector")
-        sent = maybe_send_alert(ticker_score, config.telegram_token, config.telegram_chat_id, config.alert_threshold, sr_features=sr_features, sector_features=sector_features, ml_score=ml_score)
+        sent = maybe_send_alert(ticker_score, config.telegram_token, config.telegram_chat_id, config.alert_threshold, sr_features=sr_features, sector_features=sector_features, ml_score=ml_score, anomaly_info=anomaly_info)
         if sent:
-            message = build_alert_message(ticker_score, sr_features, sector_features, ml_score=ml_score)
+            message = build_alert_message(ticker_score, sr_features, sector_features, ml_score=ml_score, anomaly_info=anomaly_info)
             save_alert(ticker, date.today(), ticker_score.total_score, message)
 
         # Run trade-alert detectors
@@ -342,6 +352,19 @@ def run_eod_job(config) -> None:
     # Build shared market context (macro + news + options per proxy)
     market_ctx = build_market_context(config)
     macro_features = market_ctx.get("macro")
+
+    # Feature drift detection (once per job run) – Phase 8
+    try:
+        from insider_alert.scoring_engine.anomaly_detector import detect_feature_drift
+        drift = detect_feature_drift({})
+        if drift["drift_detected"]:
+            logger.warning(
+                "Feature drift detected in: %s (severity: %.0f%%)",
+                ", ".join(drift["drifted_features"]),
+                drift["drift_severity"] * 100,
+            )
+    except Exception as _drift_exc:
+        logger.debug("Drift detection skipped: %s", _drift_exc)
 
     # Backfill past signal outcomes
     _run_outcome_backfill()

@@ -83,7 +83,7 @@ def send_welcome_message(config) -> bool:
     return send_telegram_message(token, chat_id, message)
 
 
-def build_alert_message(ticker_score, sr_features: dict | None = None, sector_features: dict | None = None, ml_score: float | None = None) -> str:
+def build_alert_message(ticker_score, sr_features: dict | None = None, sector_features: dict | None = None, ml_score: float | None = None, anomaly_info: dict | None = None) -> str:
     """Format a TickerScore into a human-readable Telegram message."""
     lines = [
         f"🚨 *Insider Alert: {ticker_score.ticker}*",
@@ -131,13 +131,23 @@ def build_alert_message(ticker_score, sr_features: dict | None = None, sector_fe
             lines.append(f"*Sektor ({label} / {etf}):*")
             lines.append(f"  {trend_emoji.get(trend, '')} {trend.title()} (RS 5d: {rs_5d:+.1f}%)")
 
+    # Anomaly info (Phase 8)
+    if anomaly_info:
+        anomaly_type = anomaly_info.get("anomaly_type", "normal")
+        if anomaly_type == "rare_opportunity":
+            lines.append("")
+            lines.append("🔥 *RARE OPPORTUNITY* — Noch nie gesehene bullische Konstellation")
+        elif anomaly_type == "rare_risk":
+            lines.append("")
+            lines.append("⚠️ *RARE RISK* — Ungewöhnliche Risiko-Konstellation")
+
     return "\n".join(lines)
 
 
-def maybe_send_alert(ticker_score, token: str, chat_id: str, threshold: float = 60.0, sr_features: dict | None = None, sector_features: dict | None = None, ml_score: float | None = None) -> bool:
+def maybe_send_alert(ticker_score, token: str, chat_id: str, threshold: float = 60.0, sr_features: dict | None = None, sector_features: dict | None = None, ml_score: float | None = None, anomaly_info: dict | None = None) -> bool:
     """Send alert if total_score >= threshold. Returns True if sent."""
     if ticker_score.total_score >= threshold:
-        message = build_alert_message(ticker_score, sr_features, sector_features, ml_score=ml_score)
+        message = build_alert_message(ticker_score, sr_features, sector_features, ml_score=ml_score, anomaly_info=anomaly_info)
         return send_telegram_message(token, chat_id, message)
     return False
 
