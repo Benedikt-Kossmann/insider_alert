@@ -124,6 +124,14 @@ class Config:
     garch: dict = field(default_factory=lambda: dict(_DEFAULT_GARCH))
     fred_api_key: str = ""
     charts: dict = field(default_factory=lambda: {"enabled": True, "style": "charles", "days": 30})
+    risk_management: dict = field(default_factory=lambda: {
+        "kelly_fraction": 0.5,
+        "max_position_pct": 10.0,
+        "min_position_pct": 1.0,
+        "max_sector_alerts": 3,
+        "drawdown_guard_pct": 5.0,
+        "threshold_increase": 10,
+    })
 
 
 def load_config(path: str = "config.yaml") -> "Config":
@@ -205,6 +213,17 @@ def load_config(path: str = "config.yaml") -> "Config":
         **raw.get("charts", {}),
     }
 
+    # Risk management config (Phase 10)
+    _default_risk = {
+        "kelly_fraction": 0.5,
+        "max_position_pct": 10.0,
+        "min_position_pct": 1.0,
+        "max_sector_alerts": 3,
+        "drawdown_guard_pct": 5.0,
+        "threshold_increase": 10,
+    }
+    risk_management = {**_default_risk, **raw.get("risk_management", {})}
+
     config = Config(
         tickers=tickers,
         alert_threshold=alert_threshold,
@@ -222,6 +241,7 @@ def load_config(path: str = "config.yaml") -> "Config":
         garch=garch,
         fred_api_key=raw.get("fred_api_key", "") or os.getenv("FRED_API_KEY", ""),
         charts=charts,
+        risk_management=risk_management,
     )
     _validate_config(config)
     return config

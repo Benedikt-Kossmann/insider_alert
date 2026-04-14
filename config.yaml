@@ -19,6 +19,18 @@ charts:
   include_sr: true
 
 # =============================================================================
+# Risk Management (Phase 10)
+# =============================================================================
+
+risk_management:
+  kelly_fraction: 0.5        # Half-Kelly
+  max_position_pct: 10.0     # Max Portfolio-Anteil pro Position (%)
+  min_position_pct: 1.0      # Min Portfolio-Anteil (%)
+  max_sector_alerts: 3       # Max offene Alerts pro Sektor (Cluster-Risiko)
+  drawdown_guard_pct: 5.0    # Drawdown-Schwelle für Guard-Aktivierung (%)
+  threshold_increase: 10      # Score-Anhebung wenn Guard aktiv
+
+# =============================================================================
 # FinBERT Sentiment
 # =============================================================================
 

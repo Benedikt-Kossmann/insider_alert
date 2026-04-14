@@ -90,7 +90,13 @@ def run_trade_alerts_for_ticker(
             logger.error("Trade alert detector failed for %s: %s", ticker, exc, exc_info=True)
 
 
-def run_analysis_for_ticker(ticker: str, config, macro_features: dict | None = None, market_ctx: dict | None = None) -> None:
+def run_analysis_for_ticker(
+    ticker: str,
+    config,
+    macro_features: dict | None = None,
+    market_ctx: dict | None = None,
+    dd_guard: dict | None = None,
+) -> None:
     """Run full analysis pipeline for one ticker."""
     from insider_alert.scheduler.pipeline import (
         _fetch_stock_data, _compute_stock_features,
@@ -127,9 +133,57 @@ def run_analysis_for_ticker(ticker: str, config, macro_features: dict | None = N
 
         sr_features = features.get("sr")
         sector_features = features.get("sector")
-        sent = maybe_send_alert(ticker_score, config.telegram_token, config.telegram_chat_id, config.alert_threshold, sr_features=sr_features, sector_features=sector_features, ml_score=ml_score, anomaly_info=anomaly_info)
+
+        # Risk Management (Phase 10)
+        risk_cfg = getattr(config, "risk_management", {}) or {}
+        threshold_adj = (dd_guard or {}).get("threshold_adjustment", 0)
+        dd_warning = (dd_guard or {}).get("warning", "")
+
+        sector_etf = (sector_features or {}).get("sector_etf", "")
+        corr_risk = {"cluster_risk": False, "warning": ""}
+        try:
+            from insider_alert.trade_alert_engine.risk_manager import check_correlation_risk
+            corr_risk = check_correlation_risk(
+                ticker, sector_etf,
+                max_sector_alerts=int(risk_cfg.get("max_sector_alerts", 3)),
+            )
+            if corr_risk["cluster_risk"]:
+                threshold_adj += 5
+        except Exception as _corr_exc:
+            logger.debug("Correlation risk check skipped: %s", _corr_exc)
+
+        effective_threshold = config.alert_threshold + threshold_adj
+
+        sent = maybe_send_alert(
+            ticker_score, config.telegram_token, config.telegram_chat_id, effective_threshold,
+            sr_features=sr_features, sector_features=sector_features,
+            ml_score=ml_score, anomaly_info=anomaly_info,
+        )
         if sent:
-            message = build_alert_message(ticker_score, sr_features, sector_features, ml_score=ml_score, anomaly_info=anomaly_info)
+            # Position sizing
+            position_info: dict | None = None
+            try:
+                from insider_alert.trade_alert_engine.position_sizer import compute_position_size
+                position_info = compute_position_size(
+                    signal_scores=signal_scores,
+                    composite_score=ticker_score.total_score,
+                    ticker=ticker,
+                    risk_cfg=risk_cfg,
+                )
+            except Exception as _pos_exc:
+                logger.debug("Position sizing skipped: %s", _pos_exc)
+
+            risk_warnings: list[str] = []
+            if dd_warning:
+                risk_warnings.append(dd_warning)
+            if corr_risk.get("warning"):
+                risk_warnings.append(corr_risk["warning"])
+
+            message = build_alert_message(
+                ticker_score, sr_features, sector_features,
+                ml_score=ml_score, anomaly_info=anomaly_info,
+                position_info=position_info, risk_warnings=risk_warnings,
+            )
             save_alert(ticker, date.today(), ticker_score.total_score, message)
 
             # Chart generation (Phase 9)
@@ -398,9 +452,21 @@ def run_eod_job(config) -> None:
     # Retrain ML model if due
     _try_ml_retrain()
 
+    # Drawdown Guard (Phase 10) — once per EOD job
+    dd_guard: dict = {"drawdown_active": False, "threshold_adjustment": 0, "warning": ""}
+    try:
+        from insider_alert.trade_alert_engine.risk_manager import check_drawdown_guard
+        risk_cfg = getattr(config, "risk_management", {}) or {}
+        dd_guard = check_drawdown_guard(
+            guard_pct=float(risk_cfg.get("drawdown_guard_pct", 5.0)),
+            threshold_increase=int(risk_cfg.get("threshold_increase", 10)),
+        )
+    except Exception as _dd_exc:
+        logger.debug("Drawdown guard skipped: %s", _dd_exc)
+
     logger.info("Running EOD job for %d tickers", len(config.tickers))
     for ticker in config.tickers:
-        run_analysis_for_ticker(ticker, config, macro_features, market_ctx=market_ctx)
+        run_analysis_for_ticker(ticker, config, macro_features, market_ctx=market_ctx, dd_guard=dd_guard)
 
     # Leveraged-ETF analysis
     le_cfg = config.leveraged_etfs

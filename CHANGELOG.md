@@ -11,6 +11,32 @@ Legend:
 
 ---
 
+## Phase 10 — Risk Management & Position Sizing (2026-04-14)
+
+### Added
+- `insider_alert/trade_alert_engine/position_sizer.py` — Neu:
+  - `kelly_criterion(win_rate, avg_win, avg_loss)` — Berechnet Kelly-Fraction.
+  - `compute_position_size(signal_scores, composite_score, ticker, ...)` — Empfohlener Portfolio-Anteil (%) basierend auf historischen Win/Loss-Daten aus der DB. Gibt `position_pct`, `kelly_raw`, `kelly_half`, `confidence`, `reasoning` zurück.
+- `insider_alert/trade_alert_engine/risk_manager.py` — Erweitert um:
+  - `check_correlation_risk(ticker, sector_etf, ...)` — Warnt bei ≥3 offenen Alerts im gleichen Sektor (72h-Fenster).
+  - `check_drawdown_guard(lookback_days, ...)` — Simuliert Portfolio-Return aus DB-Outcomes; erhöht Score-Schwelle um 10 Punkte wenn DD > 5%.
+
+### Changed
+- `insider_alert/scheduler/jobs.py`:
+  - `run_analysis_for_ticker()`: neuer optionaler Parameter `dd_guard`; führt Korrelations-Check + Position-Sizing durch wenn Alert gesendet wird; angepasste `effective_threshold = base + dd_adj + corr_adj`.
+  - `run_eod_job()`: ruft `check_drawdown_guard()` einmal auf und gibt `dd_guard`-Dict an alle Ticker-Analysen weiter.
+- `insider_alert/alert_engine/telegram_alert.py`:
+  - `build_alert_message()`: neue Parameter `position_info` und `risk_warnings`; zeigt Position-Size + Confidence-Emoji und Drawdown-/Cluster-Warnungen am Ende der Nachricht.
+  - `maybe_send_alert()`: Signatur unverändert (threshold kommt now vorher aus jobs.py angepasst).
+- `insider_alert/config.py`: neues Feld `risk_management: dict` in `Config`-Dataclass; geladen aus YAML mit Defaults.
+- `config.yaml`: neuer Abschnitt `risk_management:` mit `kelly_fraction`, `max_position_pct`, `min_position_pct`, `max_sector_alerts`, `drawdown_guard_pct`, `threshold_increase`.
+
+### Migration
+- ⚙️ **Config**: `config.yaml` enthält neuen `risk_management:`-Block (optional, Defaults greifen automatisch).
+- 🔄 **Restart**: `sudo systemctl restart insider-alert`
+
+---
+
 ## Phase 9 — Chart-Generation für Telegram (2026-04-14)
 
 ### Added

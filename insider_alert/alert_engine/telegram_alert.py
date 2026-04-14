@@ -120,7 +120,15 @@ def send_welcome_message(config) -> bool:
     return send_telegram_message(token, chat_id, message)
 
 
-def build_alert_message(ticker_score, sr_features: dict | None = None, sector_features: dict | None = None, ml_score: float | None = None, anomaly_info: dict | None = None) -> str:
+def build_alert_message(
+    ticker_score,
+    sr_features: dict | None = None,
+    sector_features: dict | None = None,
+    ml_score: float | None = None,
+    anomaly_info: dict | None = None,
+    position_info: dict | None = None,
+    risk_warnings: list[str] | None = None,
+) -> str:
     """Format a TickerScore into a human-readable Telegram message."""
     lines = [
         f"🚨 *Insider Alert: {ticker_score.ticker}*",
@@ -178,13 +186,40 @@ def build_alert_message(ticker_score, sr_features: dict | None = None, sector_fe
             lines.append("")
             lines.append("⚠️ *RARE RISK* — Ungewöhnliche Risiko-Konstellation")
 
+    # Position Sizing (Phase 10)
+    if position_info and position_info.get("position_pct", 0) > 0:
+        conf = position_info.get("confidence", "low")
+        conf_emoji = {"high": "🟢", "medium": "🟡", "low": "🔴"}.get(conf, "⚪")
+        lines.append("")
+        lines.append(
+            f"📐 *Position Size*: {position_info['position_pct']:.1f}% "
+            f"{conf_emoji} ({conf}) — {position_info.get('reasoning', '')}"
+        )
+
+    # Risk warnings (Drawdown Guard / Cluster Risk)
+    for warn in (risk_warnings or []):
+        if warn:
+            lines.append(warn)
+
     return "\n".join(lines)
 
 
-def maybe_send_alert(ticker_score, token: str, chat_id: str, threshold: float = 60.0, sr_features: dict | None = None, sector_features: dict | None = None, ml_score: float | None = None, anomaly_info: dict | None = None) -> bool:
+def maybe_send_alert(
+    ticker_score,
+    token: str,
+    chat_id: str,
+    threshold: float = 60.0,
+    sr_features: dict | None = None,
+    sector_features: dict | None = None,
+    ml_score: float | None = None,
+    anomaly_info: dict | None = None,
+) -> bool:
     """Send alert if total_score >= threshold. Returns True if sent."""
     if ticker_score.total_score >= threshold:
-        message = build_alert_message(ticker_score, sr_features, sector_features, ml_score=ml_score, anomaly_info=anomaly_info)
+        message = build_alert_message(
+            ticker_score, sr_features, sector_features,
+            ml_score=ml_score, anomaly_info=anomaly_info,
+        )
         return send_telegram_message(token, chat_id, message)
     return False
 
