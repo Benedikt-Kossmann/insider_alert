@@ -22,6 +22,20 @@ def _fetch_stock_data(ticker: str) -> dict:
 
     sector_etf = get_sector_etf(ticker)
 
+    # Short volume and earnings data (Phase 7)
+    try:
+        from insider_alert.data_ingestion.short_volume_data import fetch_short_volume
+        short_vol_df = fetch_short_volume(ticker, lookback_days=30)
+    except Exception:  # noqa: BLE001
+        import pandas as _pd
+        short_vol_df = _pd.DataFrame(columns=["Date", "ShortVolume", "TotalVolume", "ShortRatio"])
+
+    try:
+        from insider_alert.data_ingestion.earnings_data import fetch_earnings_data
+        earnings_raw = fetch_earnings_data(ticker)
+    except Exception:
+        earnings_raw = {}
+
     return {
         "ohlcv": fetch_ohlcv_daily(ticker),
         "options": fetch_options_chain(ticker),
@@ -33,6 +47,8 @@ def _fetch_stock_data(ticker: str) -> dict:
         "sector_ohlcv": fetch_ohlcv_daily(sector_etf),
         "sector_etf": sector_etf,
         "ticker": ticker,
+        "short_vol_df": short_vol_df,
+        "earnings_raw": earnings_raw,
     }
 
 
@@ -104,6 +120,14 @@ def _compute_stock_features(data: dict, risk_free_rate: float = 0.05) -> dict:
     sector_etf_ticker = data.get("sector_etf", "SPY")
     sector_rotation_f = compute_sector_rotation_features(sector_etf_ticker)
 
+    # Short Volume features (Phase 7)
+    from insider_alert.feature_engine.short_volume_features import compute_short_volume_features
+    short_vol_f = compute_short_volume_features(data.get("short_vol_df"))
+
+    # PEAD features (Phase 7)
+    from insider_alert.signal_engine.earnings_drift_signal import compute_pead_features
+    pead_f = compute_pead_features(data.get("earnings_raw", {}))
+
     return {
         "price": price_f,
         "volume": volume_f,
@@ -117,6 +141,8 @@ def _compute_stock_features(data: dict, risk_free_rate: float = 0.05) -> dict:
         "sector": sector_f,
         "vol_forecast": vol_forecast_f,
         "sector_rotation": sector_rotation_f,
+        "short_volume": short_vol_f,
+        "pead": pead_f,
     }
 
 
@@ -290,6 +316,14 @@ def _compute_stock_signals(features: dict, macro_features: dict | None = None, m
     if macro_features is not None:
         from insider_alert.signal_engine.macro_signal import macro_signal
         signals.append(macro_signal(macro_features))
+
+    # Short Squeeze signal (Phase 7)
+    from insider_alert.signal_engine.short_squeeze_signal import short_squeeze_signal
+    signals.append(short_squeeze_signal(features.get("short_volume", {})))
+
+    # Earnings Drift (PEAD) signal (Phase 7)
+    from insider_alert.signal_engine.earnings_drift_signal import earnings_drift_signal
+    signals.append(earnings_drift_signal(features.get("pead", {})))
 
     return signals
 

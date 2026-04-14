@@ -7,17 +7,19 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 DEFAULT_WEIGHTS = {
-    "price_anomaly": 0.14,
-    "volume_anomaly": 0.14,
+    "price_anomaly": 0.12,
+    "volume_anomaly": 0.12,
     "candle_pattern": 0.03,
-    "options_anomaly": 0.18,
-    "insider_signal": 0.18,
-    "event_leadup": 0.10,
-    "news_divergence": 0.04,
+    "options_anomaly": 0.16,
+    "insider_signal": 0.16,
+    "event_leadup": 0.09,
+    "news_divergence": 0.03,
     "accumulation_pattern": 0.02,
     "macro_regime": 0.02,
     "volatility_forecast": 0.08,
-    "sector_rotation": 0.07,
+    "sector_rotation": 0.06,
+    "short_squeeze": 0.05,
+    "earnings_drift": 0.06,
 }
 
 DEFAULT_ETF_WEIGHTS = {

@@ -11,7 +11,30 @@ Legend:
 
 ---
 
-## Phase 6 — Erweiterte Makro-Daten (FRED API) (2026-04-14)
+## Phase 7 — FINRA Short Volume & Earnings Drift (PEAD) (2026-04-14)
+
+### Added
+- `insider_alert/data_ingestion/short_volume_data.py` — `fetch_short_volume(ticker, lookback_days=30)`: downloads FINRA RegSHO daily short-volume CSVs (consolidated NMS), parses pipe-delimited format defensively, returns DataFrame `[Date, ShortVolume, TotalVolume, ShortRatio]`.
+- `insider_alert/feature_engine/short_volume_features.py` — `compute_short_volume_features(short_df)`: 4 features: `short_ratio_current`, `short_ratio_zscore`, `short_ratio_trend_5d`, `short_squeeze_score`.
+- `insider_alert/signal_engine/short_squeeze_signal.py` — `short_squeeze_signal(features)` with 3 `SignalComponent`s (40+30+30 pts), returns `{"signal_type": "short_squeeze", ...}`.
+- `insider_alert/data_ingestion/earnings_data.py` — `fetch_earnings_data(ticker)`: fetches earnings dates and computes earnings-day return, 3d/10d post-earnings drift via yfinance. Graceful fallback to defaults on errors.
+- `insider_alert/signal_engine/earnings_drift_signal.py` — `compute_pead_features(earnings_data)` + `earnings_drift_signal(features)`: PEAD 3-component signal (40+30+30 pts) with exponential time decay.
+- `tests/test_short_volume_pead.py` — 28 new tests covering all Phase 7 modules.
+
+### Changed
+- `insider_alert/scheduler/pipeline.py`:
+  - `_fetch_stock_data()`: fetches `short_vol_df` and `earnings_raw` per ticker (with exception isolation)
+  - `_compute_stock_features()`: computes `short_volume` and `pead` feature sub-dicts, adds them to returned features
+  - `_compute_stock_signals()`: appends `short_squeeze_signal` and `earnings_drift_signal` to the signal list
+- `insider_alert/scoring_engine/scorer.py` `DEFAULT_WEIGHTS`: added `short_squeeze: 0.05` and `earnings_drift: 0.06`; adjusted existing weights to keep sum = 1.00 (`options_anomaly`/`insider_signal` 0.18→0.16, `price_anomaly`/`volume_anomaly` 0.14→0.12, `event_leadup` 0.10→0.09, `news_divergence` 0.04→0.03, `sector_rotation` 0.07→0.06)
+- `config.yaml` scoring weights updated to match
+
+### Migration
+- 🔄 **Restart**: `sudo systemctl restart insider-alert`
+
+---
+
+
 
 ### Added
 - `insider_alert/data_ingestion/fred_data.py` — FRED API client (`fetch_fred_series()`) + `fetch_all_macro_data()` returning 9 pre-processed macro features (HY spread, Fed funds, CPI, initial claims, unemployment, consumer sentiment). Gracefully falls back to sane defaults when no API key is configured.
