@@ -101,6 +101,7 @@ def run_analysis_for_ticker(
     from insider_alert.scheduler.pipeline import (
         _fetch_stock_data, _compute_stock_features,
         _compute_stock_signals, _persist_signals_and_score,
+        _persist_phase13_data,
     )
     from insider_alert.scoring_engine.scorer import compute_score
     from insider_alert.alert_engine.telegram_alert import maybe_send_alert, build_alert_message
@@ -130,6 +131,9 @@ def run_analysis_for_ticker(
 
         _persist_signals_and_score(ticker, signals, ticker_score)
         save_signal_outcomes(ticker, date.today(), signals, ticker_score.total_score)
+
+        # Phase 13: archive options chain + feature snapshot
+        _persist_phase13_data(ticker, data, features)
 
         sr_features = features.get("sr")
         sector_features = features.get("sector")
@@ -485,6 +489,15 @@ def run_eod_job(config) -> None:
         cleanup_old_charts(max_age_days=7)
     except Exception as exc:
         logger.debug("Chart cleanup failed: %s", exc)
+
+    # DB cleanup (Phase 13) — once per week (Monday)
+    from datetime import date as _date
+    if _date.today().weekday() == 0:  # Monday
+        try:
+            from insider_alert.persistence.storage import cleanup_old_data
+            cleanup_old_data(max_age_days=365)
+        except Exception as exc:
+            logger.debug("DB cleanup failed: %s", exc)
 
 
 def run_intraday_job(config) -> None:

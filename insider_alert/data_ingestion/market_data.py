@@ -20,6 +20,19 @@ def fetch_ohlcv_daily(ticker: str, period: str = "6mo") -> pd.DataFrame:
         return pd.DataFrame()
 
 
+def fetch_ohlcv_daily_cached(ticker: str, period: str = "1y") -> pd.DataFrame:
+    """Return OHLCV daily data, served from SQLite cache when possible (Phase 13).
+
+    Falls back to ``fetch_ohlcv_daily`` when the DB is unavailable.
+    """
+    try:
+        from insider_alert.persistence.storage import get_ohlcv_with_cache
+        return get_ohlcv_with_cache(ticker, period=period)
+    except Exception as exc:
+        logger.debug("OHLCV cache unavailable for %s, falling back: %s", ticker, exc)
+        return fetch_ohlcv_daily(ticker, period=period)
+
+
 def fetch_ohlcv_intraday(ticker: str, interval: str = "5m", period: str = "5d") -> pd.DataFrame:
     """Return OHLCV intraday data."""
     try:

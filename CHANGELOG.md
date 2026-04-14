@@ -11,6 +11,52 @@ Legend:
 
 ---
 
+## Phase 13 — Persistenz-Erweiterung (2026-04-14)
+
+### Added
+- `insider_alert/persistence/storage.py` — 4 neue ORM-Tabellen:
+  - `OHLCVCache` — Tagespreise je Ticker; vermeidet redundante yfinance-Calls.
+  - `OptionsArchive` — Archiviert täglich Top-40 Options-Zeilen (nach Volume) je Ticker.
+  - `FeatureSnapshot` — Täglicher Feature-Snapshot je Ticker (serialisiert als JSON).
+  - `MacroSnapshot` — Täglicher Makro-Feature-Snapshot (unique per Datum).
+- Neue Storage-Funktionen: `get_ohlcv_with_cache()`, `save_ohlcv_cache()`, `get_cached_ohlcv()`, `save_options_archive()`, `get_archived_options()`, `save_feature_snapshot()`, `get_feature_snapshots()`, `save_macro_snapshot()`, `get_macro_history()`, `cleanup_old_data()`.
+
+### Changed
+- `insider_alert/data_ingestion/market_data.py`:
+  - Neue Funktion `fetch_ohlcv_daily_cached()` — Smart-Fetch mit SQLite-Cache; fällt auf `fetch_ohlcv_daily()` zurück wenn DB nicht verfügbar.
+- `insider_alert/scheduler/pipeline.py`:
+  - `_fetch_stock_data()`: Verwendet `fetch_ohlcv_daily_cached()` für den Haupt-Ticker (Sektor-ETFs weiter direkt via yfinance).
+  - `build_market_context()`: Speichert Makro-Features via `save_macro_snapshot()` nach jedem EOD-Lauf.
+  - Neue Funktion `_persist_phase13_data()` — Archiviert Options-Chain + Feature-Snapshot je Ticker.
+- `insider_alert/scheduler/jobs.py`:
+  - `run_analysis_for_ticker()`: Ruft `_persist_phase13_data()` nach Feature-Berechnung auf.
+  - `run_eod_job()`: Ruft montags `cleanup_old_data(max_age_days=365)` auf.
+
+### Migration
+- 🗄️ **DB**: 4 neue Tabellen (`ohlcv_cache`, `options_archive`, `feature_snapshots`, `macro_snapshots`) — automatisch beim nächsten Start angelegt.
+- 🔄 **Restart**: `sudo systemctl restart insider-alert`
+
+---
+
+## Phase 12 — Seasonality (2026-04-14)
+
+### Added
+- `insider_alert/feature_engine/seasonality_features.py` — Neu:
+  - `compute_seasonality_features(ohlcv, current_date)` — 6 Keys: `monthly_bias`, `weekday_bias`, `quad_witching`, `sell_in_may_active`, `seasonal_score`, `month_strength`.
+  - Basiert auf historischen S&P-500-Monatsbias-Werten + Quad-Witching-Erkennung (3. Freitag in März/Juni/September/Dezember).
+
+### Changed
+- `insider_alert/scheduler/pipeline.py`:
+  - `_compute_stock_features()`: Fügt `seasonality`-Feature-Gruppe hinzu.
+  - `_compute_stock_signals()`: Emittiert saisonale Flags (Quad-Witching, bullisch/bearisch) als Zero-Score-Signal in die Signalliste.
+- `insider_alert/alert_engine/weekly_report.py`:
+  - `generate_weekly_report()`: Neuer Abschnitt "Saisonaler Ausblick (nächste Woche)" mit Monats-Bias, Sell-in-May-Status, Quad-Witching und Seasonal Score.
+
+### Migration
+- 🔄 **Restart**: `sudo systemctl restart insider-alert`
+
+---
+
 ## Phase 11 — 13-F Institutional Flows (2026-04-14)
 
 ### Added

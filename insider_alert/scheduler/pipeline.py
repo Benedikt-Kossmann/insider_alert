@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 def _fetch_stock_data(ticker: str) -> dict:
     """Fetch all raw data for a single stock ticker. Returns a dict of DataFrames/values."""
-    from insider_alert.data_ingestion.market_data import fetch_ohlcv_daily
+    from insider_alert.data_ingestion.market_data import fetch_ohlcv_daily, fetch_ohlcv_daily_cached
     from insider_alert.data_ingestion.options_data import fetch_options_chain, fetch_historical_iv
     from insider_alert.data_ingestion.insider_data import fetch_insider_transactions
     from insider_alert.data_ingestion.event_data import days_to_next_earnings, fetch_recent_corporate_events
@@ -64,7 +64,7 @@ def _fetch_stock_data(ticker: str) -> dict:
         }
 
     return {
-        "ohlcv": fetch_ohlcv_daily(ticker),
+        "ohlcv": fetch_ohlcv_daily_cached(ticker),
         "options": fetch_options_chain(ticker),
         "iv_baseline": fetch_historical_iv(ticker),
         "insider_txns": fetch_insider_transactions(ticker),
@@ -156,6 +156,10 @@ def _compute_stock_features(data: dict, risk_free_rate: float = 0.05) -> dict:
     from insider_alert.signal_engine.earnings_drift_signal import compute_pead_features
     pead_f = compute_pead_features(data.get("earnings_raw", {}))
 
+    # Seasonality features (Phase 12)
+    from insider_alert.feature_engine.seasonality_features import compute_seasonality_features
+    season_f = compute_seasonality_features(ohlcv)
+
     return {
         "price": price_f,
         "volume": volume_f,
@@ -172,6 +176,7 @@ def _compute_stock_features(data: dict, risk_free_rate: float = 0.05) -> dict:
         "short_volume": short_vol_f,
         "pead": pead_f,
         "institutional": data.get("institutional", {}),
+        "seasonality": season_f,
     }
 
 
@@ -308,6 +313,15 @@ def build_market_context(config) -> dict:
         except Exception as exc:
             logger.warning("Options fetch failed for proxy %s: %s", proxy, exc)
 
+    # Macro snapshot (Phase 13)
+    macro_f = ctx.get("macro")
+    if macro_f:
+        try:
+            from insider_alert.persistence.storage import save_macro_snapshot
+            save_macro_snapshot(macro_f)
+        except Exception as exc:
+            logger.debug("Macro snapshot save failed: %s", exc)
+
     return ctx
 
 
@@ -357,6 +371,31 @@ def _compute_stock_signals(features: dict, macro_features: dict | None = None, m
     # Institutional 13-F flow signal (Phase 11)
     from insider_alert.signal_engine.institutional_signal import institutional_signal
     signals.append(institutional_signal(features.get("institutional", {})))
+
+    # Seasonality flags (Phase 12) — informational flags only, no score contribution
+    try:
+        season_f = features.get("seasonality", {})
+        if season_f.get("quad_witching"):
+            # Inject a synthetic zero-score signal carrying the flag
+            signals.append({
+                "signal_type": "seasonality",
+                "score": 0.0,
+                "flags": [f"📅 Quad Witching Week — erhöhte Volatilität erwartet"],
+            })
+        elif season_f.get("seasonal_score", 0.5) >= 0.7:
+            signals.append({
+                "signal_type": "seasonality",
+                "score": 0.0,
+                "flags": [f"📅 Saisonal bullisch ({season_f['seasonal_score']:.0%})"],
+            })
+        elif season_f.get("seasonal_score", 0.5) <= 0.3:
+            signals.append({
+                "signal_type": "seasonality",
+                "score": 0.0,
+                "flags": [f"📅 Saisonal bearisch ({season_f['seasonal_score']:.0%})"],
+            })
+    except Exception:
+        pass
 
     return signals
 
@@ -448,3 +487,28 @@ def _persist_signals_and_score(ticker: str, signals: list[dict], ticker_score) -
             flags=signal["flags"],
         )
     save_score(ticker, today, ticker_score)
+
+
+def _persist_phase13_data(ticker: str, data: dict, features: dict) -> None:
+    """Persist Phase-13 supplementary data: options archive + feature snapshot."""
+    # Options archive
+    try:
+        from insider_alert.persistence.storage import save_options_archive
+        options_df = data.get("options")
+        if options_df is not None and not options_df.empty:
+            save_options_archive(ticker, options_df)
+    except Exception as exc:
+        logger.debug("Options archive save failed for %s: %s", ticker, exc)
+
+    # Feature snapshot (flatten primitive features from all sub-dicts)
+    try:
+        from insider_alert.persistence.storage import save_feature_snapshot
+        flat: dict = {}
+        for sub in features.values():
+            if isinstance(sub, dict):
+                for k, v in sub.items():
+                    if isinstance(v, (int, float, str, bool, type(None))):
+                        flat[k] = v
+        save_feature_snapshot(ticker, flat)
+    except Exception as exc:
+        logger.debug("Feature snapshot save failed for %s: %s", ticker, exc)

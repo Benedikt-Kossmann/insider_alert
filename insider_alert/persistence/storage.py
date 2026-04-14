@@ -92,6 +92,56 @@ class InstitutionalCache(Base):
     fetched_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
 
 
+class OHLCVCache(Base):
+    """Cached daily OHLCV data per ticker (Phase 13)."""
+    __tablename__ = "ohlcv_cache"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    ticker = Column(String(16), nullable=False, index=True)
+    date = Column(Date, nullable=False, index=True)
+    open = Column(Float)
+    high = Column(Float)
+    low = Column(Float)
+    close = Column(Float)
+    volume = Column(Float)
+    adj_close = Column(Float)
+
+
+class OptionsArchive(Base):
+    """Archived daily options chain data per ticker (Phase 13)."""
+    __tablename__ = "options_archive"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    ticker = Column(String(16), nullable=False, index=True)
+    date = Column(Date, nullable=False, index=True)
+    contract_type = Column(String(8))
+    strike = Column(Float)
+    expiration = Column(Date)
+    volume = Column(Integer)
+    open_interest = Column(Integer)
+    implied_volatility = Column(Float)
+    last_price = Column(Float)
+    bid = Column(Float)
+    ask = Column(Float)
+
+
+class FeatureSnapshot(Base):
+    """Daily flattened feature snapshot per ticker (Phase 13)."""
+    __tablename__ = "feature_snapshots"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    ticker = Column(String(16), nullable=False, index=True)
+    date = Column(Date, nullable=False, index=True)
+    features_json = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class MacroSnapshot(Base):
+    """Daily macro indicator snapshot (Phase 13)."""
+    __tablename__ = "macro_snapshots"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    date = Column(Date, nullable=False, unique=True, index=True)
+    features_json = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
 def _get_engine(db_url: str):
     if db_url not in _engines:
         _engines[db_url] = create_engine(db_url, echo=False)
@@ -205,6 +255,370 @@ def should_refresh_institutional(
             return True
         age = datetime.now(timezone.utc) - row.fetched_at.replace(tzinfo=timezone.utc)
         return age > timedelta(days=ttl_days)
+
+
+# ---------------------------------------------------------------------------
+# Phase 13: OHLCV Cache
+# ---------------------------------------------------------------------------
+
+def get_cached_ohlcv(
+    ticker: str,
+    lookback_days: int = 400,
+    db_url: str = "sqlite:///insider_alert.db",
+):
+    """Return cached OHLCV rows as a DataFrame (DatetimeIndex, lowercase columns).
+
+    Returns empty DataFrame when no data is cached.
+    """
+    import pandas as pd
+    from datetime import timedelta
+
+    cutoff = date.today() - timedelta(days=lookback_days)
+    engine = _get_engine(db_url)
+    Session = sessionmaker(bind=engine)
+    with Session() as session:
+        rows = (
+            session.query(OHLCVCache)
+            .filter(OHLCVCache.ticker == ticker.upper(), OHLCVCache.date >= cutoff)
+            .order_by(OHLCVCache.date)
+            .all()
+        )
+        if not rows:
+            return pd.DataFrame()
+
+        data = [
+            {
+                "Date": r.date,
+                "open": r.open,
+                "high": r.high,
+                "low": r.low,
+                "close": r.close,
+                "volume": r.volume,
+            }
+            for r in rows
+        ]
+        df = pd.DataFrame(data).set_index("Date")
+        df.index = pd.to_datetime(df.index)
+        return df
+
+
+def save_ohlcv_cache(
+    ticker: str,
+    ohlcv,
+    db_url: str = "sqlite:///insider_alert.db",
+) -> int:
+    """Insert new OHLCV rows (skips existing ticker+date pairs). Returns count inserted."""
+    if ohlcv is None or ohlcv.empty:
+        return 0
+
+    engine = _get_engine(db_url)
+    Session = sessionmaker(bind=engine)
+    saved = 0
+
+    # Normalise column names to lowercase
+    ohlcv = ohlcv.copy()
+    ohlcv.columns = [c.lower() for c in ohlcv.columns]
+
+    with Session() as session:
+        for idx, row in ohlcv.iterrows():
+            d = idx.date() if hasattr(idx, "date") else idx
+            existing = (
+                session.query(OHLCVCache)
+                .filter_by(ticker=ticker.upper(), date=d)
+                .first()
+            )
+            if not existing:
+                session.add(OHLCVCache(
+                    ticker=ticker.upper(),
+                    date=d,
+                    open=float(row.get("open", 0) or 0),
+                    high=float(row.get("high", 0) or 0),
+                    low=float(row.get("low", 0) or 0),
+                    close=float(row.get("close", 0) or 0),
+                    volume=float(row.get("volume", 0) or 0),
+                    adj_close=float(row.get("adj close", row.get("close", 0)) or 0),
+                ))
+                saved += 1
+        session.commit()
+    return saved
+
+
+def get_ohlcv_with_cache(
+    ticker: str,
+    period: str = "1y",
+    db_url: str = "sqlite:///insider_alert.db",
+):
+    """Smart-fetch OHLCV: serve from cache, refresh only missing days via yfinance.
+
+    Falls back to direct yfinance download when cache is empty.
+    Returns a DataFrame with lowercase column names and DatetimeIndex.
+    """
+    import pandas as pd
+    import yfinance as yf
+    from datetime import timedelta
+
+    cached = get_cached_ohlcv(ticker, lookback_days=400, db_url=db_url)
+
+    if not cached.empty:
+        last_cached = cached.index[-1].date()
+        today = date.today()
+
+        if last_cached >= today - timedelta(days=1):
+            return cached
+
+        # Fetch only the days since the last cached date
+        start = (last_cached + timedelta(days=1)).strftime("%Y-%m-%d")
+        try:
+            new_raw = yf.Ticker(ticker).history(start=start, interval="1d", auto_adjust=True)
+            if not new_raw.empty:
+                new_raw.columns = [c.lower() for c in new_raw.columns]
+                save_ohlcv_cache(ticker, new_raw, db_url=db_url)
+                return pd.concat([cached, new_raw])
+        except Exception as exc:
+            logger.debug("Incremental OHLCV fetch failed for %s: %s", ticker, exc)
+        return cached
+
+    # No cache — full download
+    try:
+        raw = yf.Ticker(ticker).history(period=period, interval="1d", auto_adjust=True)
+        if not raw.empty:
+            raw.columns = [c.lower() for c in raw.columns]
+            save_ohlcv_cache(ticker, raw, db_url=db_url)
+        return raw
+    except Exception as exc:
+        logger.warning("OHLCV download failed for %s: %s", ticker, exc)
+        import pandas as pd
+        return pd.DataFrame()
+
+
+# ---------------------------------------------------------------------------
+# Phase 13: Options Archive
+# ---------------------------------------------------------------------------
+
+def save_options_archive(
+    ticker: str,
+    options_df,
+    db_url: str = "sqlite:///insider_alert.db",
+) -> int:
+    """Archive today's top-40 options rows (by volume). Returns count inserted."""
+    if options_df is None or options_df.empty:
+        return 0
+
+    df = options_df.copy()
+    df.columns = [c.lower() for c in df.columns]
+
+    # Keep top 40 by volume around ATM
+    vol_col = "volume" if "volume" in df.columns else None
+    df = df.nlargest(40, vol_col) if vol_col else df.head(40)
+
+    engine = _get_engine(db_url)
+    Session = sessionmaker(bind=engine)
+    today = date.today()
+    saved = 0
+
+    with Session() as session:
+        for _, row in df.iterrows():
+            try:
+                exp = row.get("expiration")
+                if exp is not None and hasattr(exp, "date"):
+                    exp = exp.date()
+                session.add(OptionsArchive(
+                    ticker=ticker.upper(),
+                    date=today,
+                    contract_type=str(row.get("contracttype", row.get("contract_type", ""))),
+                    strike=float(row.get("strike", 0) or 0),
+                    expiration=exp,
+                    volume=int(row.get("volume", 0) or 0),
+                    open_interest=int(row.get("openinterest", row.get("open_interest", 0)) or 0),
+                    implied_volatility=float(row.get("impliedvolatility", row.get("implied_volatility", 0)) or 0),
+                    last_price=float(row.get("lastprice", row.get("last_price", 0)) or 0),
+                    bid=float(row.get("bid", 0) or 0),
+                    ask=float(row.get("ask", 0) or 0),
+                ))
+                saved += 1
+            except Exception as exc:
+                logger.debug("OptionsArchive row skipped: %s", exc)
+        session.commit()
+    return saved
+
+
+def get_archived_options(
+    ticker: str,
+    lookback_days: int = 30,
+    db_url: str = "sqlite:///insider_alert.db",
+):
+    """Return archived options rows for *ticker* as a DataFrame."""
+    import pandas as pd
+    from datetime import timedelta
+
+    cutoff = date.today() - timedelta(days=lookback_days)
+    engine = _get_engine(db_url)
+    Session = sessionmaker(bind=engine)
+    with Session() as session:
+        rows = (
+            session.query(OptionsArchive)
+            .filter(OptionsArchive.ticker == ticker.upper(), OptionsArchive.date >= cutoff)
+            .order_by(OptionsArchive.date)
+            .all()
+        )
+        if not rows:
+            return pd.DataFrame()
+        return pd.DataFrame([{
+            "date": r.date,
+            "contract_type": r.contract_type,
+            "strike": r.strike,
+            "expiration": r.expiration,
+            "volume": r.volume,
+            "open_interest": r.open_interest,
+            "implied_volatility": r.implied_volatility,
+        } for r in rows])
+
+
+# ---------------------------------------------------------------------------
+# Phase 13: Feature Snapshot Store
+# ---------------------------------------------------------------------------
+
+def save_feature_snapshot(
+    ticker: str,
+    features: dict,
+    db_url: str = "sqlite:///insider_alert.db",
+) -> None:
+    """Upsert a flattened feature snapshot for *ticker* / today.
+
+    Only primitive values (int, float, str, bool, None) are serialised.
+    """
+    today = date.today()
+    safe: dict = {}
+    for k, v in features.items():
+        if isinstance(v, (int, float, str, bool, type(None))):
+            safe[k] = v
+        elif isinstance(v, (list, tuple)):
+            safe[k] = list(v)
+
+    engine = _get_engine(db_url)
+    Session = sessionmaker(bind=engine)
+    with Session() as session:
+        existing = (
+            session.query(FeatureSnapshot)
+            .filter_by(ticker=ticker.upper(), date=today)
+            .first()
+        )
+        if existing:
+            existing.features_json = json.dumps(safe)
+        else:
+            session.add(FeatureSnapshot(
+                ticker=ticker.upper(),
+                date=today,
+                features_json=json.dumps(safe),
+            ))
+        session.commit()
+
+
+def get_feature_snapshots(
+    ticker: str,
+    lookback_days: int = 90,
+    db_url: str = "sqlite:///insider_alert.db",
+) -> list[dict]:
+    """Return historical feature snapshots for *ticker* as a list of dicts."""
+    from datetime import timedelta
+
+    cutoff = date.today() - timedelta(days=lookback_days)
+    engine = _get_engine(db_url)
+    Session = sessionmaker(bind=engine)
+    with Session() as session:
+        rows = (
+            session.query(FeatureSnapshot)
+            .filter(FeatureSnapshot.ticker == ticker.upper(), FeatureSnapshot.date >= cutoff)
+            .order_by(FeatureSnapshot.date)
+            .all()
+        )
+        return [{"date": r.date, **json.loads(r.features_json)} for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# Phase 13: Macro Snapshot History
+# ---------------------------------------------------------------------------
+
+def save_macro_snapshot(
+    macro_features: dict,
+    db_url: str = "sqlite:///insider_alert.db",
+) -> None:
+    """Upsert today's macro feature snapshot."""
+    today = date.today()
+    safe = {
+        k: v
+        for k, v in macro_features.items()
+        if isinstance(v, (int, float, str, bool, type(None)))
+    }
+    engine = _get_engine(db_url)
+    Session = sessionmaker(bind=engine)
+    with Session() as session:
+        existing = session.query(MacroSnapshot).filter_by(date=today).first()
+        if existing:
+            existing.features_json = json.dumps(safe)
+        else:
+            session.add(MacroSnapshot(date=today, features_json=json.dumps(safe)))
+        session.commit()
+
+
+def get_macro_history(
+    lookback_days: int = 365,
+    db_url: str = "sqlite:///insider_alert.db",
+):
+    """Return historical macro snapshots as a DataFrame indexed by date."""
+    import pandas as pd
+    from datetime import timedelta
+
+    cutoff = date.today() - timedelta(days=lookback_days)
+    engine = _get_engine(db_url)
+    Session = sessionmaker(bind=engine)
+    with Session() as session:
+        rows = (
+            session.query(MacroSnapshot)
+            .filter(MacroSnapshot.date >= cutoff)
+            .order_by(MacroSnapshot.date)
+            .all()
+        )
+        if not rows:
+            return pd.DataFrame()
+        data = [{"date": r.date, **json.loads(r.features_json)} for r in rows]
+        return pd.DataFrame(data).set_index("date")
+
+
+# ---------------------------------------------------------------------------
+# Phase 13: DB Maintenance
+# ---------------------------------------------------------------------------
+
+def cleanup_old_data(
+    max_age_days: int = 365,
+    db_url: str = "sqlite:///insider_alert.db",
+) -> dict:
+    """Delete rows older than *max_age_days* from all time-series tables.
+
+    Returns a dict ``{table_name: deleted_count}``.
+    """
+    from datetime import timedelta
+
+    cutoff = date.today() - timedelta(days=max_age_days)
+    engine = _get_engine(db_url)
+    Session = sessionmaker(bind=engine)
+    deleted: dict = {}
+
+    with Session() as session:
+        for model, date_col in [
+            (OHLCVCache, OHLCVCache.date),
+            (OptionsArchive, OptionsArchive.date),
+            (FeatureSnapshot, FeatureSnapshot.date),
+            (MacroSnapshot, MacroSnapshot.date),
+            (Signal, Signal.date),
+            (Score, Score.date),
+        ]:
+            count = session.query(model).filter(date_col < cutoff).delete()
+            deleted[model.__tablename__] = count
+        session.commit()
+
+    logger.info("DB cleanup (max_age=%dd): %s", max_age_days, deleted)
+    return deleted
 
 
 def save_signal(

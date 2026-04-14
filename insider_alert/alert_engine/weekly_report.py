@@ -148,6 +148,26 @@ def generate_weekly_report(
 
     lines.append("")
     lines.append(f"_Watchlist: {len(tickers)} Ticker aktiv_")
+
+    # Seasonal outlook for the coming week (Phase 12)
+    try:
+        from insider_alert.feature_engine.seasonality_features import compute_seasonality_features
+        next_week = date.today() + timedelta(days=7)
+        season = compute_seasonality_features(current_date=next_week)
+        month_label = "Starker" if season["monthly_bias"] > 0.005 else (
+            "Schwacher" if season["monthly_bias"] < -0.001 else "Neutraler"
+        )
+        lines += [
+            "",
+            "📅 *Saisonaler Ausblick (nächste Woche)*",
+            f"  • Monat: {month_label} Monat (Bias: {season['monthly_bias']:+.1%})",
+            f"  • Sell-in-May: {'Aktiv ⚠️' if season['sell_in_may_active'] else 'Inaktiv ✅'}",
+            f"  • Quad Witching: {'JA ⚡' if season['quad_witching'] else 'Nein'}",
+            f"  • Seasonal Score: {season['seasonal_score']:.0%}",
+        ]
+    except Exception as exc:
+        logger.debug("Seasonality section failed: %s", exc)
+
     lines.append("_Gute Woche!_ 🚀")
 
     return "\n".join(lines)
