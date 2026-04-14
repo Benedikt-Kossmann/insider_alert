@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 _EDGAR_ARCHIVES = "https://www.sec.gov/Archives/edgar/data/{cik}/{accession_nodashes}/{document}"
 _EDGAR_INDEX = "https://www.sec.gov/Archives/edgar/data/{cik}/{accession_nodashes}/{accession}-index.json"
 # Maximum number of Form-4 XML documents to parse per call (rate-limit friendly)
-_MAX_FORM4_FETCH = 10
+_MAX_FORM4_FETCH = 20
 
 
 def _xml_text(element, path: str) -> str:

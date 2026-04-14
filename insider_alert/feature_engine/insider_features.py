@@ -1,5 +1,6 @@
 """Insider transaction feature computation."""
 import logging
+from datetime import date, timedelta
 
 import pandas as pd
 
@@ -37,6 +38,8 @@ def compute_insider_features(transactions_df: pd.DataFrame) -> dict:
         "insider_buy_value_30d": 0.0,
         "insider_cluster_score": 0.0,
         "insider_role_weighted_score": 0.0,
+        "insider_recent_buy_count_7d": 0,
+        "insider_net_buy_score": 0.0,
     }
     if transactions_df is None or transactions_df.empty:
         return defaults
@@ -57,6 +60,23 @@ def compute_insider_features(transactions_df: pd.DataFrame) -> dict:
     if "value" in buys.columns:
         buy_value = float(buys["value"].sum())
     insider_buy_value_30d = buy_value
+
+    # Recency: buys in the last 7 days
+    insider_recent_buy_count_7d = 0
+    if "date" in buys.columns and insider_buy_count_30d > 0:
+        cutoff_7d = date.today() - timedelta(days=7)
+        try:
+            buy_dates = pd.to_datetime(buys["date"]).dt.date
+            insider_recent_buy_count_7d = int((buy_dates >= cutoff_7d).sum())
+        except Exception:
+            pass
+
+    # Net buy score: penalizes when sells accompany buys (0 = only sells, 1 = only buys)
+    total_activity = insider_buy_count_30d + insider_sell_count_30d
+    if total_activity > 0:
+        insider_net_buy_score = max(0.0, (insider_buy_count_30d - insider_sell_count_30d) / total_activity)
+    else:
+        insider_net_buy_score = 0.0
 
     if insider_buy_count_30d == 0:
         insider_cluster_score = 0.0
@@ -83,4 +103,6 @@ def compute_insider_features(transactions_df: pd.DataFrame) -> dict:
         "insider_buy_value_30d": insider_buy_value_30d,
         "insider_cluster_score": insider_cluster_score,
         "insider_role_weighted_score": insider_role_weighted_score,
+        "insider_recent_buy_count_7d": insider_recent_buy_count_7d,
+        "insider_net_buy_score": insider_net_buy_score,
     }
