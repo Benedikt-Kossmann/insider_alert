@@ -158,11 +158,16 @@ leveraged_etfs:
 
   universe:
     # --- Indizes ---
-    - ticker: LYY7.DE
+    - ticker: 3DEL.DE
       underlying: "^GDAXI"
       direction: long
-      leverage: 2
-      label: "Amundi LevDAX 2x"
+      leverage: 3
+      label: "WisdomTree DAX 3x Daily Long"
+    - ticker: 3DES.DE
+      underlying: "^GDAXI"
+      direction: short
+      leverage: 3
+      label: "WisdomTree DAX 3x Daily Short"
     - ticker: 3USL.L
       underlying: "^GSPC"
       direction: long
@@ -173,16 +178,16 @@ leveraged_etfs:
       direction: short
       leverage: 3
       label: "WisdomTree S&P 500 3x Daily Short"
-    - ticker: LQQ.PA
+    - ticker: 3QQQ.DE
       underlying: "^NDX"
       direction: long
       leverage: 3
-      label: "Amundi Nasdaq-100 3x Daily Long"
-    - ticker: 3NVD.L
+      label: "WisdomTree NASDAQ 100 3x Daily Long"
+    - ticker: 3QSS.DE
       underlying: "^NDX"
       direction: short
       leverage: 3
-      label: "WisdomTree Nasdaq-100 3x Daily Short"
+      label: "WisdomTree NASDAQ 100 3x Daily Short"
     # --- Rohstoffe ---
     - ticker: 3GOL.L
       underlying: "GC=F"
@@ -199,6 +204,11 @@ leveraged_etfs:
       direction: long
       leverage: 3
       label: "WisdomTree Silver 3x Daily Long"
+    - ticker: 3SIS.L
+      underlying: "SI=F"
+      direction: short
+      leverage: 3
+      label: "WisdomTree Silver 3x Daily Short"
 
   scoring:
     alert_threshold: 68
