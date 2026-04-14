@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 _EDGAR_ARCHIVES = "https://www.sec.gov/Archives/edgar/data/{cik}/{accession_nodashes}/{document}"
 _EDGAR_INDEX = "https://www.sec.gov/Archives/edgar/data/{cik}/{accession_nodashes}/{accession}-index.json"
 # Maximum number of Form-4 XML documents to parse per call (rate-limit friendly)
-_MAX_FORM4_FETCH = 20
+_MAX_FORM4_FETCH = 40
 
 
 def _xml_text(element, path: str) -> str:
@@ -147,7 +147,7 @@ def _parse_form4_xml(cik: str, accession: str, primary_doc: str, filing_date) ->
     return rows
 
 
-def fetch_insider_transactions(ticker: str, days_back: int = 30) -> pd.DataFrame:
+def fetch_insider_transactions(ticker: str, days_back: int = 90) -> pd.DataFrame:
     """Return insider buy/sell transactions for the last `days_back` days.
 
     Parses SEC EDGAR Form-4 XML filings to extract:

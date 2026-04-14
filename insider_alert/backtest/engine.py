@@ -95,7 +95,7 @@ def backtest_ticker(
     closes = ohlcv["close"].values
 
     for i in range(min_lookback, n - max_fwd):
-        window = ohlcv.iloc[:i + 1]
+        window = ohlcv.iloc[:i]   # exclude today's bar → no look-ahead bias
         close_today = float(closes[i])
 
         if close_today <= 0:

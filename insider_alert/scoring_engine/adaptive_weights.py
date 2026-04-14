@@ -12,18 +12,26 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 # Minimum outcomes per signal to adjust (otherwise keep default weight)
-_MIN_OUTCOMES = 30
+_MIN_OUTCOMES = 50
 
-# Blend ratio: how much of the new weights to use (0=all default, 1=all data)
-_BLEND_RATIO = 0.5
+
+def _compute_dynamic_blend(total_outcomes: int, lookback_days: int) -> float:
+    """Return blend ratio (0=all default, 1=all data) scaled by data volume."""
+    if total_outcomes < 50 or lookback_days < 90:
+        return 0.3
+    if total_outcomes < 150 or lookback_days < 180:
+        return 0.5
+    if total_outcomes < 300 or lookback_days < 365:
+        return 0.7
+    return 0.8
 
 
 def compute_adaptive_weights(
     default_weights: dict[str, float],
     *,
-    lookback_days: int = 90,
+    lookback_days: int = 180,
     min_outcomes: int = _MIN_OUTCOMES,
-    blend: float = _BLEND_RATIO,
+    blend: float = 0.5,  # kept for backward compat, overridden dynamically
     db_url: str = "sqlite:///insider_alert.db",
 ) -> dict[str, float]:
     """Compute blended weights from default weights + outcome hit rates.
@@ -37,7 +45,7 @@ def compute_adaptive_weights(
     min_outcomes : int
         Minimum outcomes required before adjusting a signal.
     blend : float
-        0.0 = use default weights entirely, 1.0 = use data-driven weights entirely.
+        Ignored — blend is now computed dynamically from data volume.
     db_url : str
         Database URL.
 
@@ -56,7 +64,11 @@ def compute_adaptive_weights(
         logger.info("No outcome data for adaptive weights, using defaults.")
         return dict(default_weights)
 
-    # Build raw score for each signal: weighted combination of hit rate and avg edge
+    # Dynamic blend ratio based on total available data
+    total_outcomes = sum(d["count"] for d in hit_rates.values())
+    blend = _compute_dynamic_blend(total_outcomes, lookback_days)
+
+    # Build raw score for each signal: Sharpe-like edge
     signal_scores: dict[str, float] = {}
     for sig_type, weight in default_weights.items():
         data = hit_rates.get(sig_type)
@@ -64,10 +76,11 @@ def compute_adaptive_weights(
             # Not enough data: keep default weight
             signal_scores[sig_type] = weight
         else:
-            # Score = hit_rate * 0.7 + normalised_edge * 0.3
-            edge = data.get("avg_return_5d", 0.0)
-            edge_norm = float(np.clip(edge * 20 + 0.5, 0.1, 1.0))  # map ±5% → [0.1, 1.0]
-            perf = data["hit_rate_5d"] * 0.7 + edge_norm * 0.3
+            avg_return = data.get("avg_return_5d", 0.0)
+            std_return = data.get("std_return_5d", 0.01)
+            sharpe = avg_return / max(std_return, 0.01)
+            sharpe_norm = float(np.clip(sharpe * 0.5 + 0.5, 0.1, 1.0))  # map [-1,1] → [0.1,1]
+            perf = data["hit_rate_5d"] * 0.5 + sharpe_norm * 0.5
             signal_scores[sig_type] = max(perf, 0.01)
 
     # Normalise data-driven scores to sum to 1.0
@@ -143,6 +156,7 @@ def _fetch_hit_rates(
         result[sig_type] = {
             "hit_rate_5d": len(hits) / len(outcomes) if outcomes else 0.0,
             "avg_return_5d": float(np.mean(returns)) if returns else 0.0,
+            "std_return_5d": float(np.std(returns)) if len(returns) > 1 else 0.01,
             "count": len(outcomes),
         }
 

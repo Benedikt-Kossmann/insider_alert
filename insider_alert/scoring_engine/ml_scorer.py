@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 try:
     from sklearn.ensemble import GradientBoostingClassifier
     from sklearn.preprocessing import StandardScaler
+    from sklearn.model_selection import TimeSeriesSplit
+    from sklearn.metrics import roc_auc_score, f1_score
+    from sklearn.utils.class_weight import compute_sample_weight
 
     _HAS_SKLEARN = True
 except ImportError:
@@ -133,6 +136,35 @@ def train_model(
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
 
+    # Time-series cross-validation to measure out-of-sample performance
+    tscv = TimeSeriesSplit(n_splits=5)
+    auc_scores: list[float] = []
+    f1_scores: list[float] = []
+
+    for train_idx, test_idx in tscv.split(X_scaled):
+        X_train, X_test = X_scaled[train_idx], X_scaled[test_idx]
+        y_train, y_test = y[train_idx], y[test_idx]
+        if len(set(y_test)) < 2:
+            continue
+        fold_model = GradientBoostingClassifier(
+            n_estimators=100, max_depth=3, learning_rate=0.1,
+            subsample=0.8, min_samples_leaf=5, random_state=42,
+        )
+        fold_model.fit(X_train, y_train)
+        y_proba = fold_model.predict_proba(X_test)[:, 1]
+        auc_scores.append(roc_auc_score(y_test, y_proba))
+        f1_scores.append(f1_score(y_test, fold_model.predict(X_test)))
+
+    if auc_scores:
+        logger.info(
+            "ML CV AUC: %.3f ± %.3f  F1: %.3f ± %.3f",
+            np.mean(auc_scores), np.std(auc_scores),
+            np.mean(f1_scores), np.std(f1_scores),
+        )
+
+    # Train final model on all data with balanced class weights
+    sample_weights = compute_sample_weight("balanced", y)
+
     model = GradientBoostingClassifier(
         n_estimators=100,
         max_depth=3,
@@ -141,7 +173,7 @@ def train_model(
         min_samples_leaf=5,
         random_state=42,
     )
-    model.fit(X_scaled, y)
+    model.fit(X_scaled, y, sample_weight=sample_weights)
 
     _model = model
     _scaler = scaler
@@ -153,10 +185,9 @@ def train_model(
     for name, imp in sorted(zip(feat_names, importances), key=lambda x: -x[1]):
         logger.info("ML feature importance: %s = %.3f", name, imp)
 
-    accuracy = model.score(X_scaled, y)
     logger.info(
-        "ML model trained: %d samples, %d features, train accuracy=%.1f%%",
-        n, len(feat_names), accuracy * 100,
+        "ML model trained: %d samples, %d features",
+        n, len(feat_names),
     )
     return True
 
