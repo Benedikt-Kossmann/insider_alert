@@ -1,4 +1,55 @@
+# =============================================================================
+# System
+# =============================================================================
+
+scheduler:
+  eod_hour: 17
+  eod_minute: 30
+  intraday_interval_minutes: 60
+
+# =============================================================================
+# Marktdaten & Makro
+# =============================================================================
+
+macro:
+  enabled: true
+  vix_ticker: "^VIX"
+  tnx_ticker: "^TNX"
+  irx_ticker: "^IRX"
+  dxy_ticker: "DX-Y.NYB"
+
+# =============================================================================
+# Feature-Berechnung
+# =============================================================================
+
+feature_engine:
+  rolling_window: 20
+  zscore_window: 20
+  rvol_window: 20
+
+# =============================================================================
+# Scoring (Aktien)
+# =============================================================================
+
+scoring:
+  alert_threshold: 60
+  weights:
+    insider_signal: 0.20
+    options_anomaly: 0.20
+    price_anomaly: 0.15
+    volume_anomaly: 0.15
+    event_leadup: 0.10
+    news_divergence: 0.05
+    candle_pattern: 0.05
+    accumulation_pattern: 0.05
+    macro_regime: 0.05
+
+# =============================================================================
+# Aktien-Watchlist
+# =============================================================================
+
 tickers:
+  # --- Technologie ---
   - AAPL
   - MSFT
   - NVDA
@@ -20,6 +71,7 @@ tickers:
   - UBER
   - COIN
   - HOOD
+  # --- Finanzen ---
   - JPM
   - BAC
   - GS
@@ -28,12 +80,15 @@ tickers:
   - C
   - V
   - MA
+  # --- Energie ---
   - XOM
   - CVX
   - OXY
   - SLB
+  # --- Industrie ---
   - CAT
   - GE
+  # --- Gesundheit ---
   - UNH
   - LLY
   - JNJ
@@ -41,32 +96,14 @@ tickers:
   - MRK
   - ISRG
   - MRNA
+  # --- Spekulative Wachstumswerte ---
   - SOFI
   - RIVN
   - LCID
 
-scoring:
-  alert_threshold: 60
-  weights:
-    price_anomaly: 0.15
-    volume_anomaly: 0.15
-    candle_pattern: 0.05
-    options_anomaly: 0.20
-    insider_signal: 0.20
-    event_leadup: 0.10
-    news_divergence: 0.05
-    accumulation_pattern: 0.05
-    macro_regime: 0.05
-
-feature_engine:
-  rolling_window: 20
-  zscore_window: 20
-  rvol_window: 20
-
-scheduler:
-  eod_hour: 17
-  eod_minute: 30
-  intraday_interval_minutes: 60
+# =============================================================================
+# Trade-Alerts (Aktien)
+# =============================================================================
 
 trade_alerts:
   enabled: true
@@ -98,85 +135,9 @@ trade_alerts:
     earnings_add_window: 14
     news_score_add: 0.5
 
-leveraged_etfs:
-  enabled: true
-  universe:
-    # --- DAX ---
-    - ticker: LYY7.DE
-      underlying: "^GDAXI"
-      direction: long
-      leverage: 2
-      label: "Amundi LevDAX 2x"
-    # --- Rohstoffe: Gold ---
-    - ticker: 3GOL.L
-      underlying: "GC=F"
-      direction: long
-      leverage: 3
-      label: "WisdomTree Gold 3x Daily Long"
-    - ticker: 3GOS.L
-      underlying: "GC=F"
-      direction: short
-      leverage: 3
-      label: "WisdomTree Gold 3x Daily Short"
-    # --- Rohstoffe: Öl ---
-    - ticker: 3OIL.L
-      underlying: "CL=F"
-      direction: long
-      leverage: 3
-      label: "WisdomTree WTI Crude Oil 3x Daily Long"
-    - ticker: 3OIS.L
-      underlying: "CL=F"
-      direction: short
-      leverage: 3
-      label: "WisdomTree WTI Crude Oil 3x Daily Short"
-    # --- Rohstoffe: Silber ---
-    - ticker: 3SIL.L
-      underlying: "SI=F"
-      direction: long
-      leverage: 3
-      label: "WisdomTree Silver 3x Daily Long"
-  scoring:
-    alert_threshold: 55
-    weights:
-      momentum: 0.25
-      mean_reversion_dip: 0.20
-      volatility_regime: 0.20
-      leverage_health: 0.15
-      volume_anomaly: 0.10
-      price_anomaly: 0.10
-  risk:
-    max_holding_days_low_vol: 15
-    max_holding_days_high_vol: 5
-    decay_warning_threshold: 0.02
-    max_drawdown_pct: 15.0
-    stop_atr_multiplier: 1.5
-    rr_ratio: 2.0
-    cooldown_hours: 4
-  entry:
-    momentum_min_score: 60
-    health_min_score: 50
-    dip_min_score: 70
-    vix_max: 30
-  momentum:
-    rsi_period: 14
-    rsi_oversold: 30
-    rsi_overbought: 70
-    macd_fast: 12
-    macd_slow: 26
-    macd_signal: 9
-    ema_fast: 10
-    ema_slow: 50
-    adx_period: 14
-    adx_trend_threshold: 25
-  mean_reversion:
-    bollinger_period: 20
-    bollinger_std: 2.0
-    rsi_bounce_level: 35
-  volatility:
-    vix_ticker: "^VIX"
-    vix_high: 30
-    vix_low: 15
-    atr_regime_window: 20
+# =============================================================================
+# Discovery Scanner
+# =============================================================================
 
 discovery:
   enabled: true
@@ -188,9 +149,101 @@ discovery:
   crypto_move_pct_threshold: 8.0
   max_results: 15
 
-macro:
+# =============================================================================
+# Leveraged ETFs
+# =============================================================================
+
+leveraged_etfs:
   enabled: true
-  vix_ticker: "^VIX"
-  tnx_ticker: "^TNX"
-  irx_ticker: "^IRX"
-  dxy_ticker: "DX-Y.NYB"
+
+  universe:
+    # --- Indizes ---
+    - ticker: LYY7.DE
+      underlying: "^GDAXI"
+      direction: long
+      leverage: 2
+      label: "Amundi LevDAX 2x"
+    - ticker: 3USL.L
+      underlying: "^GSPC"
+      direction: long
+      leverage: 3
+      label: "WisdomTree S&P 500 3x Daily Long"
+    - ticker: 3USS.L
+      underlying: "^GSPC"
+      direction: short
+      leverage: 3
+      label: "WisdomTree S&P 500 3x Daily Short"
+    - ticker: LQQ.PA
+      underlying: "^NDX"
+      direction: long
+      leverage: 3
+      label: "Amundi Nasdaq-100 3x Daily Long"
+    - ticker: 3NVD.L
+      underlying: "^NDX"
+      direction: short
+      leverage: 3
+      label: "WisdomTree Nasdaq-100 3x Daily Short"
+    # --- Rohstoffe ---
+    - ticker: 3GOL.L
+      underlying: "GC=F"
+      direction: long
+      leverage: 3
+      label: "WisdomTree Gold 3x Daily Long"
+    - ticker: 3GOS.L
+      underlying: "GC=F"
+      direction: short
+      leverage: 3
+      label: "WisdomTree Gold 3x Daily Short"
+    - ticker: 3SIL.L
+      underlying: "SI=F"
+      direction: long
+      leverage: 3
+      label: "WisdomTree Silver 3x Daily Long"
+
+  scoring:
+    alert_threshold: 68
+    weights:
+      momentum: 0.25
+      mean_reversion_dip: 0.20
+      volatility_regime: 0.20
+      leverage_health: 0.15
+      volume_anomaly: 0.10
+      price_anomaly: 0.10
+
+  entry:
+    momentum_min_score: 68
+    health_min_score: 62
+    dip_min_score: 75
+    vix_max: 30
+
+  risk:
+    max_holding_days_low_vol: 15
+    max_holding_days_high_vol: 5
+    decay_warning_threshold: 0.02
+    max_drawdown_pct: 15.0
+    stop_atr_multiplier: 1.5
+    rr_ratio: 2.0
+    cooldown_hours: 4
+
+  momentum:
+    rsi_period: 14
+    rsi_oversold: 30
+    rsi_overbought: 70
+    macd_fast: 12
+    macd_slow: 26
+    macd_signal: 9
+    ema_fast: 10
+    ema_slow: 50
+    adx_period: 14
+    adx_trend_threshold: 25
+
+  mean_reversion:
+    bollinger_period: 20
+    bollinger_std: 2.0
+    rsi_bounce_level: 35
+
+  volatility:
+    vix_ticker: "^VIX"
+    vix_high: 30
+    vix_low: 15
+    atr_regime_window: 20

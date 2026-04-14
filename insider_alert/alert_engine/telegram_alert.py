@@ -279,7 +279,7 @@ def maybe_send_trade_alert(
 # Leveraged-ETF alert message builders
 # ---------------------------------------------------------------------------
 
-def build_etf_alert_message(ticker: str, alert: dict, underlying: str = "", leverage: int = 3) -> str:
+def build_etf_alert_message(ticker: str, alert: dict, underlying: str = "", leverage: int = 3, label: str = "") -> str:
     """Format a leveraged-ETF alert for Telegram."""
     setup_type = alert.get("setup_type", "")
     score = alert.get("score", 0.0)
@@ -293,9 +293,10 @@ def build_etf_alert_message(ticker: str, alert: dict, underlying: str = "", leve
     }
     setup_label = setup_labels.get(setup_type, setup_type)
 
+    display_name = label if label else f"{leverage}x {underlying} {dir_label}"
     lines = [
-        f"⚡ *Leveraged ETF Alert: {ticker}*",
-        f"{leverage}x {underlying} {dir_label}",
+        f"⚡ *Leveraged ETF Alert*",
+        f"*{display_name}* (`{ticker}`)",
         f"Setup: {setup_label}",
     ]
     if setup_type != "exit_warning":
@@ -328,6 +329,7 @@ def maybe_send_etf_alert(
     cooldown_hours: float = 4.0,
     underlying: str = "",
     leverage: int = 3,
+    label: str = "",
     db_url: str = "sqlite:///insider_alert.db",
 ) -> bool:
     """Send a leveraged-ETF alert via Telegram with deduplication."""
@@ -345,7 +347,7 @@ def maybe_send_etf_alert(
         logger.info("Skipping duplicate ETF alert: %s / %s", ticker, setup_type)
         return False
 
-    message = build_etf_alert_message(ticker, alert, underlying, leverage)
+    message = build_etf_alert_message(ticker, alert, underlying, leverage, label)
     sent = send_telegram_message(token, chat_id, message)
     if sent:
         save_alert(

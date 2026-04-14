@@ -156,6 +156,7 @@ def run_etf_analysis_for_ticker(etf_entry: dict, config) -> None:
     underlying = etf_entry.get("underlying", "")
     direction = etf_entry.get("direction", "long")
     leverage = int(etf_entry.get("leverage", 3))
+    label = etf_entry.get("label", "")
     le_cfg = config.leveraged_etfs
 
     logger.info("Running ETF analysis for %s (underlying=%s, %dx %s)", ticker, underlying, leverage, direction)
@@ -208,7 +209,7 @@ def run_etf_analysis_for_ticker(etf_entry: dict, config) -> None:
             maybe_send_etf_alert(
                 ticker, entry, config.telegram_token, config.telegram_chat_id,
                 score_threshold=etf_threshold, cooldown_hours=cooldown,
-                underlying=underlying, leverage=leverage,
+                underlying=underlying, leverage=leverage, label=label,
             )
 
         # Exit detection
@@ -221,7 +222,7 @@ def run_etf_analysis_for_ticker(etf_entry: dict, config) -> None:
             maybe_send_etf_alert(
                 ticker, exit_alert, config.telegram_token, config.telegram_chat_id,
                 score_threshold=0, cooldown_hours=cooldown,
-                underlying=underlying, leverage=leverage,
+                underlying=underlying, leverage=leverage, label=label,
             )
 
         logger.info("ETF analysis complete for %s: score=%.1f", ticker, ticker_score.total_score)
