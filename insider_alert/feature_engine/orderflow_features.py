@@ -50,7 +50,15 @@ def compute_orderflow_features(ohlcv: pd.DataFrame) -> dict:
     large_trade_count = float(np.clip(rvol * aggressive_buy_ratio / 5.0, 0.0, 1.0))
 
     range_ratio = (h - lo) / (c + 1e-9)
-    iceberg_suspect_score = float(np.clip(rvol / RVOL_NORMALISATION_FACTOR, 0.0, 1.0)) if range_ratio < TIGHT_RANGE_THRESHOLD else 0.0
+    # Iceberg orders show as TIGHT range with NORMAL (not extreme) volume:
+    # hidden liquidity suppresses price movement even at normal volume levels.
+    # (High RVOL + tight range is more likely absorption, not iceberg.)
+    iceberg_suspect_score = 0.0
+    if range_ratio < TIGHT_RANGE_THRESHOLD and rvol < RVOL_NORMALISATION_FACTOR:
+        # Score higher the tighter the range relative to the threshold
+        iceberg_suspect_score = float(np.clip(
+            (TIGHT_RANGE_THRESHOLD - range_ratio) / TIGHT_RANGE_THRESHOLD, 0.0, 1.0
+        ))
 
     close_near_high = (h - c) / (h - lo + 1e-9) < 0.2
     absorption_score = 1 if (close_near_high and rvol > ABSORPTION_RVOL_THRESHOLD) else 0

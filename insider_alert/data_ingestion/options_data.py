@@ -54,6 +54,8 @@ def fetch_historical_iv(ticker: str) -> float:
         closes = df["Close"].dropna()
         log_returns = np.log(closes / closes.shift(1)).dropna()
         hv_30d = float(log_returns.tail(30).std() * np.sqrt(252))
+        if pd.isna(hv_30d):
+            return 0.0
         return hv_30d
     except Exception as exc:
         logger.warning("fetch_historical_iv failed for %s: %s", ticker, exc)

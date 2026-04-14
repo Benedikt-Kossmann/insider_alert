@@ -101,8 +101,7 @@ def compute_news_features(news_df: pd.DataFrame, return_1d: float) -> dict:
         "price_news_divergence_score": 0.0,
     }
     if news_df is None or news_df.empty:
-        divergence = float(np.clip(abs(return_1d), 0.0, 1.0)) if abs(return_1d) > 0.02 else 0.0
-        defaults["price_news_divergence_score"] = divergence
+        # No news → no news-vs-price divergence possible
         return defaults
 
     now = datetime.now(tz=timezone.utc)
@@ -156,10 +155,13 @@ def compute_news_features(news_df: pd.DataFrame, return_1d: float) -> dict:
 
     public_catalyst_strength = float(np.clip(news_count_24h / 5.0, 0.0, 1.0))
 
-    if news_count_24h == 0 and abs(return_1d) > 0.02:
-        price_news_divergence_score = float(np.clip(abs(return_1d), 0.0, 1.0))
-    else:
-        price_news_divergence_score = 0.0
+    # True divergence: news exists AND price moves in the opposite direction of sentiment
+    price_news_divergence_score = 0.0
+    if news_count_24h > 0 and abs(return_1d) > 0.02 and abs(news_sentiment_score) > 0.1:
+        sentiment_sign = float(np.sign(news_sentiment_score))
+        price_sign = float(np.sign(return_1d))
+        if sentiment_sign != price_sign:
+            price_news_divergence_score = float(np.clip(abs(return_1d), 0.0, 1.0))
 
     return {
         "news_count_24h": news_count_24h,

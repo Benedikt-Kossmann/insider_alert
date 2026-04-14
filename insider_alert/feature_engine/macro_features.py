@@ -19,6 +19,13 @@ def compute_macro_features(macro_data: dict[str, pd.DataFrame]) -> dict:
     -------
     dict
         Macro features including regime classification.
+
+    Units note
+    ----------
+    ``yield_spread`` is in percentage-point terms (e.g. 1.5 means 1.5 %).
+    ``irx_rate`` is in decimal form (e.g. 0.052) for use in Black-Scholes Greeks.
+    ``vix_current`` / ``vix_value`` are VIX index points (not percent).
+    All downstream consumers (macro_signal, jobs.py, tests) expect these units.
     """
     defaults = {
         "vix_current": 0.0,

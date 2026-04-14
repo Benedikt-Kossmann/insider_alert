@@ -184,5 +184,105 @@ class TestZscoreCorrectness(unittest.TestCase):
         self.assertGreater(abs(result["daily_return_zscore"]), 1.0)
 
 
+# ---------------------------------------------------------------------------
+# Bug-fix regression tests (REVIEW_01)
+# ---------------------------------------------------------------------------
+
+class TestAccumulationHigherLowsClip(unittest.TestCase):
+    """Bug #5: higher_lows_score must be capped at 1.0."""
+
+    def test_perfect_higher_lows_equals_one(self):
+        from insider_alert.feature_engine.accumulation_features import compute_accumulation_features
+        # 5 bars with strictly increasing lows → higher_count/4 = 1.0
+        closes = np.array([10.0, 10.1, 10.2, 10.3, 10.4] * 2)
+        lows = np.array([9.0, 9.1, 9.2, 9.3, 9.4] * 2)
+        highs = closes + 0.5
+        opens = closes - 0.3
+        volumes = np.ones(10) * 1_000_000.0
+        df = pd.DataFrame({"open": opens, "high": highs, "low": lows,
+                           "close": closes, "volume": volumes})
+        result = compute_accumulation_features(df)
+        self.assertLessEqual(result["higher_lows_score"], 1.0)
+        self.assertGreaterEqual(result["higher_lows_score"], 0.0)
+
+    def test_all_scores_bounded(self):
+        from insider_alert.feature_engine.accumulation_features import compute_accumulation_features
+        ohlcv = _make_ohlcv(30)
+        result = compute_accumulation_features(ohlcv)
+        for key, val in result.items():
+            self.assertLessEqual(val, 1.0, f"{key} exceeded 1.0: {val}")
+            self.assertGreaterEqual(val, 0.0, f"{key} below 0.0: {val}")
+
+
+class TestIcebergLogicFixed(unittest.TestCase):
+    """Bug #4: iceberg_suspect_score should fire on tight range + NORMAL RVOL (not high RVOL)."""
+
+    def _make_df(self, close: float, range_pct: float, n_rows: int = 25,
+                 avg_volume: float = 1_000_000.0, last_volume_multiplier: float = 1.0):
+        closes = np.full(n_rows, close)
+        half_range = close * range_pct / 2
+        highs = closes + half_range
+        lows = closes - half_range
+        opens = closes
+        volumes = np.full(n_rows, avg_volume)
+        volumes[-1] = avg_volume * last_volume_multiplier
+        return pd.DataFrame({"open": opens, "high": highs, "low": lows,
+                             "close": closes, "volume": volumes})
+
+    def test_tight_range_normal_volume_fires(self):
+        from insider_alert.feature_engine.orderflow_features import compute_orderflow_features
+        # range_pct < 1%, RVOL ≈ 1.0 (normal volume) → iceberg should fire
+        df = self._make_df(100.0, range_pct=0.005, last_volume_multiplier=1.0)
+        result = compute_orderflow_features(df)
+        self.assertGreater(result["iceberg_suspect_score"], 0.0)
+
+    def test_tight_range_high_rvol_does_not_fire(self):
+        from insider_alert.feature_engine.orderflow_features import compute_orderflow_features
+        # range_pct < 1%, but RVOL = 5× (extremely high) → should NOT fire
+        df = self._make_df(100.0, range_pct=0.005, last_volume_multiplier=5.0)
+        result = compute_orderflow_features(df)
+        self.assertEqual(result["iceberg_suspect_score"], 0.0)
+
+    def test_wide_range_no_iceberg(self):
+        from insider_alert.feature_engine.orderflow_features import compute_orderflow_features
+        # range_pct = 3% (above threshold) → score must be 0 regardless
+        df = self._make_df(100.0, range_pct=0.03, last_volume_multiplier=1.0)
+        result = compute_orderflow_features(df)
+        self.assertEqual(result["iceberg_suspect_score"], 0.0)
+
+    def test_score_in_bounds(self):
+        from insider_alert.feature_engine.orderflow_features import compute_orderflow_features
+        for rpc in (0.001, 0.005, 0.009, 0.02):
+            for vm in (0.5, 1.0, 2.0, 5.0):
+                df = self._make_df(100.0, range_pct=rpc, last_volume_multiplier=vm)
+                result = compute_orderflow_features(df)
+                val = result["iceberg_suspect_score"]
+                self.assertGreaterEqual(val, 0.0, f"range={rpc}, vm={vm}")
+                self.assertLessEqual(val, 1.0, f"range={rpc}, vm={vm}")
+
+
+class TestNewsDivergenceLogicFixed(unittest.TestCase):
+    """Bug #7: price_news_divergence_score requires news + opposing sentiment."""
+
+    def test_no_news_no_divergence(self):
+        """No news → divergence must be 0 (old code incorrectly fired on empty news)."""
+        from insider_alert.feature_engine.news_features import compute_news_features
+        result = compute_news_features(pd.DataFrame(), return_1d=0.05)
+        self.assertEqual(result["price_news_divergence_score"], 0.0)
+
+    def test_no_news_no_divergence_large_move(self):
+        """Even a large move with no news should not produce a divergence score."""
+        from insider_alert.feature_engine.news_features import compute_news_features
+        result = compute_news_features(pd.DataFrame(), return_1d=0.10)
+        self.assertEqual(result["price_news_divergence_score"], 0.0)
+
+    def test_divergence_score_in_bounds(self):
+        """Divergence score must always be in [0, 1]."""
+        from insider_alert.feature_engine.news_features import compute_news_features
+        result = compute_news_features(pd.DataFrame(), return_1d=0.0)
+        self.assertGreaterEqual(result["price_news_divergence_score"], 0.0)
+        self.assertLessEqual(result["price_news_divergence_score"], 1.0)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -77,8 +77,16 @@ def fetch_short_volume(ticker: str, lookback_days: int = 30) -> pd.DataFrame:
             if sv_col is None or tv_col is None:
                 continue
 
-            short_vol = int(str(row.get(sv_col, "0")).replace(",", "") or 0)
-            total_vol = int(str(row.get(tv_col, "0")).replace(",", "") or 0)
+            try:
+                short_vol = int(str(row.get(sv_col, "0")).replace(",", "") or 0)
+            except (ValueError, TypeError):
+                logger.warning("Invalid short volume value for %s on %s", ticker, date.date())
+                short_vol = 0
+            try:
+                total_vol = int(str(row.get(tv_col, "0")).replace(",", "") or 0)
+            except (ValueError, TypeError):
+                logger.warning("Invalid total volume value for %s on %s", ticker, date.date())
+                total_vol = 0
             short_ratio = short_vol / max(total_vol, 1)
 
             records.append({

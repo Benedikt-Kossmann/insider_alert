@@ -11,6 +11,26 @@ Legend:
 
 ---
 
+## REVIEW_01 — Critical Bug Fixes (2026-04-14)
+
+### Fixed
+- **insider_signal.py** — `_COMPONENTS` max_score summed to 110 instead of 100; redistributed to 22+18+22+14+14+10=100. Scores now properly fill the 0–100 range without premature clipping.
+- **short_volume_data.py** — `int()` parse for short/total volume wrapped in individual `try/except (ValueError, TypeError)` with WARNING logging; prevents crash propagation on malformed FINRA data.
+- **orderflow_features.py** — Iceberg detection logic was inverted (fired on high RVOL, not normal RVOL). Fixed: `iceberg_suspect_score` now fires on tight range (<1%) + normal/low RVOL (<3×). High RVOL + tight range is absorption, not iceberg.
+- **accumulation_features.py** — `higher_lows_score` guarded with `min(..., 1.0)` clip for defensive correctness.
+- **options_data.py** — `fetch_historical_iv()` could return NaN when `std()` is called on <2 returns; added `if pd.isna(hv_30d): return 0.0`.
+- **news_features.py** — `price_news_divergence_score` incorrectly fired when there were NO news + big move. Fixed: score only fires when news exist AND price moves opposite to sentiment direction; empty-news early-return also corrected.
+- **macro_features.py** — Added clear docstring documenting units: `yield_spread` in percentage-point terms; `irx_rate` in decimal (for Black-Scholes); `vix_current` in index points. All downstream consumers (macro_signal, jobs.py, tests) already consistent.
+
+### Tests
+- `tests/test_signal_engine.py` — `TestInsiderSignalMaxScore`: verifies sum=100, full-feature score=100, no overflow.
+- `tests/test_feature_engine.py` — `TestAccumulationHigherLowsClip`, `TestIcebergLogicFixed` (4 cases), `TestNewsDivergenceLogicFixed` (3 cases).
+
+### Migration
+- 🔄 **Restart**: `sudo systemctl restart insider-alert`
+
+---
+
 ## Phase 13 — Persistenz-Erweiterung (2026-04-14)
 
 ### Added

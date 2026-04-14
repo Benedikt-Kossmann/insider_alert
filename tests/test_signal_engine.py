@@ -218,5 +218,45 @@ class TestAccumulationSignal(_SignalTestMixin, unittest.TestCase):
         self.assertEqual(result["score"], 0.0)
 
 
+# ---------------------------------------------------------------------------
+# Bug-fix regression tests (REVIEW_01)
+# ---------------------------------------------------------------------------
+
+class TestInsiderSignalMaxScore(unittest.TestCase):
+    """Bug #2: max_score components must sum to exactly 100."""
+
+    def test_max_score_sum_is_100(self):
+        from insider_alert.signal_engine.insider_signal import _COMPONENTS
+        total = sum(c.max_score for c in _COMPONENTS)
+        self.assertEqual(total, 100, f"Expected 100, got {total}")
+
+    def test_full_features_score_is_100(self):
+        from insider_alert.signal_engine.insider_signal import compute_insider_signal
+        features = {
+            "insider_cluster_score": 1.0,
+            "insider_role_weighted_score": 1.0,
+            "insider_buy_value_30d": 500_000.0,
+            "insider_buy_count_30d": 5.0,
+            "insider_recent_buy_count_7d": 2.0,
+            "insider_net_buy_score": 1.0,
+        }
+        result = compute_insider_signal(features)
+        self.assertAlmostEqual(result["score"], 100.0, places=1)
+
+    def test_score_never_exceeds_100(self):
+        from insider_alert.signal_engine.insider_signal import compute_insider_signal
+        # Over-saturated features should still clip to 100
+        features = {
+            "insider_cluster_score": 99.0,
+            "insider_role_weighted_score": 99.0,
+            "insider_buy_value_30d": 50_000_000.0,
+            "insider_buy_count_30d": 99.0,
+            "insider_recent_buy_count_7d": 99.0,
+            "insider_net_buy_score": 99.0,
+        }
+        result = compute_insider_signal(features)
+        self.assertLessEqual(result["score"], 100.0)
+
+
 if __name__ == "__main__":
     unittest.main()

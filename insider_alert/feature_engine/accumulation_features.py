@@ -44,7 +44,7 @@ def compute_accumulation_features(ohlcv: pd.DataFrame) -> dict:
     if len(df5) >= 2:
         lows = df5["low"].values
         higher_count = sum(1 for i in range(1, len(lows)) if lows[i] > lows[i - 1])
-        higher_lows_score = float(higher_count / (len(lows) - 1))
+        higher_lows_score = float(min(higher_count / (len(lows) - 1), 1.0))
 
     volume_under_resistance_score = 0.0
     if "volume" in df10.columns:
