@@ -90,7 +90,7 @@ def run_trade_alerts_for_ticker(
             logger.error("Trade alert detector failed for %s: %s", ticker, exc, exc_info=True)
 
 
-def run_analysis_for_ticker(ticker: str, config, macro_features: dict | None = None) -> None:
+def run_analysis_for_ticker(ticker: str, config, macro_features: dict | None = None, market_ctx: dict | None = None) -> None:
     """Run full analysis pipeline for one ticker."""
     from insider_alert.scheduler.pipeline import (
         _fetch_stock_data, _compute_stock_features,
@@ -106,7 +106,7 @@ def run_analysis_for_ticker(ticker: str, config, macro_features: dict | None = N
         data = _fetch_stock_data(ticker)
         irx_rate = macro_features.get("irx_rate", 0.05) if macro_features else 0.05
         features = _compute_stock_features(data, risk_free_rate=irx_rate)
-        signals = _compute_stock_signals(features, macro_features)
+        signals = _compute_stock_signals(features, macro_features, market_ctx=market_ctx)
         ticker_score = compute_score(ticker, signals, config.weights)
 
         # ML scoring overlay
@@ -354,7 +354,7 @@ def run_eod_job(config) -> None:
 
     logger.info("Running EOD job for %d tickers", len(config.tickers))
     for ticker in config.tickers:
-        run_analysis_for_ticker(ticker, config, macro_features)
+        run_analysis_for_ticker(ticker, config, macro_features, market_ctx=market_ctx)
 
     # Leveraged-ETF analysis
     le_cfg = config.leveraged_etfs
@@ -377,7 +377,7 @@ def run_intraday_job(config) -> None:
 
     logger.info("Running intraday job for %d tickers", len(config.tickers))
     for ticker in config.tickers:
-        run_analysis_for_ticker(ticker, config, macro_features)
+        run_analysis_for_ticker(ticker, config, macro_features, market_ctx=market_ctx)
 
     # Leveraged-ETF analysis
     le_cfg = config.leveraged_etfs

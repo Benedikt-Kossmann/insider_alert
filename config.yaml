@@ -52,14 +52,15 @@ garch:
 scoring:
   alert_threshold: 60
   weights:
-    insider_signal: 0.20
-    options_anomaly: 0.20
-    price_anomaly: 0.15
-    volume_anomaly: 0.15
+    insider_signal: 0.18
+    options_anomaly: 0.18
+    price_anomaly: 0.14
+    volume_anomaly: 0.14
     event_leadup: 0.10
     volatility_forecast: 0.08
+    sector_rotation: 0.07
     news_divergence: 0.04
-    candle_pattern: 0.04
+    candle_pattern: 0.03
     accumulation_pattern: 0.02
     macro_regime: 0.02
 

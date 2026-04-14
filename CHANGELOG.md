@@ -11,6 +11,29 @@ Legend:
 
 ---
 
+## Phase 5 — Cross-Asset Correlation & Sector Rotation (2026-04-14)
+
+### Added
+- `insider_alert/feature_engine/cross_asset_features.py` — 20-day rolling correlation matrix over SPY, QQQ, GLD, TLT, UUP; `compute_cross_asset_features()` returns 5 keys: `equity_correlation_regime` ("normal"|"decorrelation"|"panic"), `spy_qqq_correlation`, `spy_gld_correlation`, `spy_tlt_correlation`, `correlation_anomaly_score`
+- `insider_alert/signal_engine/sector_rotation_signal.py` — `compute_sector_rotation_features(sector_etf)` (10d momentum rank, reversal score, capital flow proxy); `compute_sector_rotation_signal()` with 3 components (40+30+30 pts)
+
+### Changed
+- `scheduler/pipeline.py`:
+  - `build_market_context()`: adds `cross_asset` key (computed once per job run); ctx dict now includes `"cross_asset": {}`
+  - `_compute_stock_features()`: imports and calls `compute_sector_rotation_features` using the ticker's sector ETF; adds `sector_rotation` sub-dict to returned features
+  - `_compute_stock_signals()`: new `market_ctx` parameter; appends `compute_sector_rotation_signal` to signal list
+  - `_fetch_stock_data()`: already added `ticker` key in Phase 4
+- `scheduler/jobs.py`: `run_analysis_for_ticker()` gains `market_ctx` parameter; both EOD and intraday jobs pass `market_ctx` down; `_compute_stock_signals` called with `market_ctx`
+- `scoring_engine/scorer.py` `DEFAULT_WEIGHTS`: `sector_rotation: 0.07` added; `price_anomaly`/`volume_anomaly` trimmed to 0.14, `options_anomaly`/`insider_signal` to 0.18; sum = 1.00
+- `config.yaml` scoring weights updated to match
+- `trade_alert_engine/leveraged_etf_alert.py` `detect_leveraged_etf_entry()`: when `market_ctx["cross_asset"]["equity_correlation_regime"] == "panic"`, raises `momentum_min_score` and `dip_min_score` by +10 and prepends `"⚠️ Correlation Regime: PANIC"` flag to all entry alerts
+
+### Migration Notes
+- 🔄 **Restart**: Service restart required
+- No new dependencies
+
+---
+
 ## Phase 4 — GARCH Volatility Forecasting (2026-04-14)
 
 ### Added

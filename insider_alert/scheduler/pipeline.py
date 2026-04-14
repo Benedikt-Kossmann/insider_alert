@@ -65,6 +65,7 @@ def _compute_stock_features(data: dict, risk_free_rate: float = 0.05) -> dict:
     from insider_alert.feature_engine.sr_features import compute_support_resistance
     from insider_alert.feature_engine.sector_features import compute_relative_strength, get_sector_label
     from insider_alert.feature_engine.volatility_forecast import compute_volatility_forecast
+    from insider_alert.signal_engine.sector_rotation_signal import compute_sector_rotation_features
 
     ohlcv = data["ohlcv"]
     current_price = float(ohlcv["close"].iloc[-1]) if not ohlcv.empty and "close" in ohlcv.columns else 100.0
@@ -100,6 +101,9 @@ def _compute_stock_features(data: dict, risk_free_rate: float = 0.05) -> dict:
     ticker = data.get("ticker", "")
     vol_forecast_f = compute_volatility_forecast(ohlcv, ticker=ticker)
 
+    sector_etf_ticker = data.get("sector_etf", "SPY")
+    sector_rotation_f = compute_sector_rotation_features(sector_etf_ticker)
+
     return {
         "price": price_f,
         "volume": volume_f,
@@ -112,6 +116,7 @@ def _compute_stock_features(data: dict, risk_free_rate: float = 0.05) -> dict:
         "sr": sr_f,
         "sector": sector_f,
         "vol_forecast": vol_forecast_f,
+        "sector_rotation": sector_rotation_f,
     }
 
 
@@ -159,7 +164,7 @@ def build_market_context(config) -> dict:
     from insider_alert.feature_engine.options_features import compute_options_features
     from insider_alert.data_ingestion.market_data import fetch_ohlcv_daily
 
-    ctx: dict = {"macro": None, "news": {}, "options": {}, "irx_rate": 0.05}
+    ctx: dict = {"macro": None, "news": {}, "options": {}, "irx_rate": 0.05, "cross_asset": {}}
 
     # --- Macro (once) ---
     macro_cfg = getattr(config, "macro", None) or {}
@@ -181,6 +186,16 @@ def build_market_context(config) -> dict:
             )
         except Exception as exc:
             logger.warning("Macro data fetch failed: %s", exc)
+
+    # --- Cross-asset correlation (once per job run) ---
+    try:
+        from insider_alert.feature_engine.cross_asset_features import compute_cross_asset_features
+        ctx["cross_asset"] = compute_cross_asset_features()
+        regime = ctx["cross_asset"].get("equity_correlation_regime", "normal")
+        anomaly = ctx["cross_asset"].get("correlation_anomaly_score", 0.0)
+        logger.info("Cross-asset regime: %s (anomaly=%.2f)", regime, anomaly)
+    except Exception as exc:
+        logger.warning("Cross-asset features failed: %s", exc)
 
     # --- Collect unique proxy tickers ---
     le_cfg = getattr(config, "leveraged_etfs", None) or {}
@@ -230,8 +245,8 @@ def build_market_context(config) -> dict:
 # Signal computation helpers
 # ---------------------------------------------------------------------------
 
-def _compute_stock_signals(features: dict, macro_features: dict | None = None) -> list[dict]:
-    """Run all stock signal generators (8 core + macro if available)."""
+def _compute_stock_signals(features: dict, macro_features: dict | None = None, market_ctx: dict | None = None) -> list[dict]:
+    """Run all stock signal generators (core + macro + sector_rotation if available)."""
     from insider_alert.signal_engine.price_signal import compute_price_anomaly_signal
     from insider_alert.signal_engine.volume_signal import compute_volume_anomaly_signal
     from insider_alert.signal_engine.orderflow_signal import compute_orderflow_anomaly_signal
@@ -242,6 +257,7 @@ def _compute_stock_signals(features: dict, macro_features: dict | None = None) -
     from insider_alert.signal_engine.accumulation_signal import compute_accumulation_signal
 
     from insider_alert.signal_engine.volatility_forecast_signal import compute_volatility_forecast_signal
+    from insider_alert.signal_engine.sector_rotation_signal import compute_sector_rotation_signal
 
     signals = [
         compute_price_anomaly_signal(features["price"]),
@@ -253,6 +269,7 @@ def _compute_stock_signals(features: dict, macro_features: dict | None = None) -
         compute_news_divergence_signal(features["news"]),
         compute_accumulation_signal(features["accumulation"]),
         compute_volatility_forecast_signal(features.get("vol_forecast", {})),
+        compute_sector_rotation_signal(features.get("sector_rotation", {})),
     ]
 
     if macro_features is not None:

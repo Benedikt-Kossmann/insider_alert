@@ -65,6 +65,17 @@ def detect_leveraged_etf_entry(
         yc_regime = macro_f.get("yield_curve_regime", "")
         dxy_trend = macro_f.get("dxy_trend", "")
 
+        # Cross-asset panic regime: raise entry threshold by 10 points
+        cross_asset = market_ctx.get("cross_asset", {})
+        if cross_asset.get("equity_correlation_regime") == "panic":
+            entry_cfg = dict(entry_cfg)  # avoid mutating caller's dict
+            entry_cfg["momentum_min_score"] = float(entry_cfg.get("momentum_min_score", 60)) + 10
+            entry_cfg["dip_min_score"] = float(entry_cfg.get("dip_min_score", 70)) + 10
+            logger.info(
+                "PANIC correlation regime for %s — entry thresholds raised by +10",
+                ticker,
+            )
+
         veto_sentiment_long = float(entry_cfg.get("veto_news_sentiment", -0.5))
         veto_sentiment_short = float(entry_cfg.get("veto_news_sentiment_short", 0.5))
 
@@ -96,7 +107,12 @@ def detect_leveraged_etf_entry(
     vix_regime = vol_regime_features.get("vix_regime", "normal")
     vix_current = float(vol_regime_features.get("vix_current", 20))
 
-    flags: list[str] = []
+    # Collect panic flag for alert messages
+    panic_flags: list[str] = []
+    if market_ctx and market_ctx.get("cross_asset", {}).get("equity_correlation_regime") == "panic":
+        panic_flags = ["⚠️ Correlation Regime: PANIC — erhöhtes Systemrisiko"]
+
+    flags: list[str] = list(panic_flags)
 
     # --- Momentum entry ---
     if momentum_score >= momentum_min and vix_regime != "high" and health_score >= health_min:
